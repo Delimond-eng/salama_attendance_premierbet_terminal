@@ -7,10 +7,7 @@ import 'theme_data.dart';
 
 extension XPadding on Widget {
   Padding paddingAll(double value) {
-    return Padding(
-      padding: EdgeInsets.all(value),
-      child: this,
-    );
+    return Padding(padding: EdgeInsets.all(value), child: this);
   }
 
   Padding paddingLeft(double value) {
@@ -58,16 +55,36 @@ extension XPadding on Widget {
 
 class AppTheme {
   static ThemeData lightTheme(BuildContext context) {
+    const secondaryBrand = Color(0xFF0EA5E9);
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: primaryColor,
+      brightness: Brightness.light,
+      primary: primaryColor,
+      secondary: secondaryBrand,
+      surface: Colors.white,
+      error: errorColor,
+    );
+
     return ThemeData(
+      useMaterial3: true,
       brightness: Brightness.light,
       fontFamily: "Poppins",
+      colorScheme: colorScheme,
       primarySwatch: primaryMaterialColor,
       primaryColor: primaryColor,
-      scaffoldBackgroundColor: const Color.fromARGB(255, 233, 237, 247),
+      scaffoldBackgroundColor: const Color(0xFFF3F6FC),
       iconTheme: const IconThemeData(color: blackColor),
       textTheme: const TextTheme(
+        titleLarge: TextStyle(
+          color: blackColor,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.1,
+        ),
+        bodyLarge: TextStyle(color: blackColor80, height: 1.35),
         bodyMedium: TextStyle(color: blackColor60),
       ),
+      dividerColor: blackColor10,
+      cardColor: Colors.white,
       elevatedButtonTheme: elevatedButtonThemeData,
       textButtonTheme: textButtonThemeData,
       outlinedButtonTheme: outlinedButtonTheme(),

@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 import '../constants/styles.dart';
 
 const AppBarTheme appBarLightTheme = AppBarTheme(
-  backgroundColor: primaryColor,
+  backgroundColor: Colors.white,
+  foregroundColor: blackColor,
   elevation: 0,
-  iconTheme: IconThemeData(color: Colors.white),
+  scrolledUnderElevation: 0,
+  surfaceTintColor: Colors.transparent,
+  iconTheme: IconThemeData(color: blackColor),
   titleTextStyle: TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.w700,
-    color: Colors.white,
+    fontSize: 19,
+    fontWeight: FontWeight.w800,
+    color: blackColor,
   ),
 );
 

@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../constants/styles.dart';
 
 const InputDecorationTheme lightInputDecorationTheme = InputDecorationTheme(
-  fillColor: whiteColor,
+  fillColor: Color(0xFFF7F9FE),
   filled: true,
-  hintStyle: TextStyle(color: blackColor60, fontSize: 14.0),
+  hintStyle: TextStyle(color: blackColor60, fontSize: 14.0, height: 1.2),
+  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+  labelStyle: TextStyle(color: blackColor80, fontWeight: FontWeight.w500),
   border: outlineInputBorder,
   enabledBorder: outlineInputBorder,
   focusedBorder: focusedOutlineInputBorder,
@@ -16,6 +18,7 @@ const InputDecorationTheme darkInputDecorationTheme = InputDecorationTheme(
   fillColor: darkGreyColor,
   filled: true,
   hintStyle: TextStyle(color: whiteColor40, fontSize: 14.0),
+  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
   border: outlineInputBorder,
   enabledBorder: outlineInputBorder,
   focusedBorder: focusedOutlineInputBorder,
@@ -23,29 +26,27 @@ const InputDecorationTheme darkInputDecorationTheme = InputDecorationTheme(
 );
 
 const OutlineInputBorder outlineInputBorder = OutlineInputBorder(
-  borderRadius: BorderRadius.all(Radius.circular(defaultBorderRadius)),
-  borderSide: BorderSide(
-    color: greyColor60,
-  ),
+  borderRadius: BorderRadius.all(Radius.circular(defaultBorderRadius + 2)),
+  borderSide: BorderSide(color: greyColor80),
 );
 
 const OutlineInputBorder focusedOutlineInputBorder = OutlineInputBorder(
-  borderRadius: BorderRadius.all(Radius.circular(defaultBorderRadius)),
-  borderSide: BorderSide(color: primaryColor),
+  borderRadius: BorderRadius.all(Radius.circular(defaultBorderRadius + 2)),
+  borderSide: BorderSide(color: primaryColor, width: 1.3),
 );
 
 const OutlineInputBorder errorOutlineInputBorder = OutlineInputBorder(
-  borderRadius: BorderRadius.all(Radius.circular(defaultBorderRadius)),
-  borderSide: BorderSide(
-    color: errorColor,
-  ),
+  borderRadius: BorderRadius.all(Radius.circular(defaultBorderRadius + 2)),
+  borderSide: BorderSide(color: errorColor),
 );
 
 OutlineInputBorder secondaryOutlineInputBorder(BuildContext context) {
   return OutlineInputBorder(
     borderRadius: const BorderRadius.all(Radius.circular(defaultBorderRadius)),
     borderSide: BorderSide(
-      color: Theme.of(context).textTheme.bodyLarge!.color!.withOpacity(0.15),
+      color: Theme.of(
+        context,
+      ).textTheme.bodyLarge!.color!.withValues(alpha: 0.15),
     ),
   );
 }

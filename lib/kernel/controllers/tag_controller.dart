@@ -1,8 +1,4 @@
-import 'dart:async';
 import 'dart:io';
-
-import '/kernel/models/area.dart';
-import '/kernel/models/user.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -13,9 +9,7 @@ class TagsController extends GetxController {
   var activeStation = Rxn<Map<String, dynamic>>();
   var attendanceType = "".obs; // "CHECK-IN", "CHECK-OUT", "ENROLL"
   var currentPageIndex = 0.obs;
-  
-  var scannedArea = Area().obs;
-  var scannedSite = Site().obs;
+
   var isQrcodeScanned = false.obs;
   var patrolId = 0.obs;
   var isLoading = false.obs;
@@ -42,7 +36,7 @@ class TagsController extends GetxController {
   void setAttendanceType(String type) {
     attendanceType.value = type;
   }
-  
+
   void setPage(int index) {
     currentPageIndex.value = index;
   }

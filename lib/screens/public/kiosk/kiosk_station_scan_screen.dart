@@ -1,8 +1,9 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
+
 import '/global/controllers.dart';
 import '/global/store.dart';
 import '/kernel/services/http_manager.dart';
@@ -10,6 +11,7 @@ import 'kiosk_components.dart';
 
 class KioskStationScanScreen extends StatefulWidget {
   const KioskStationScanScreen({super.key, required this.onSuccess});
+
   final VoidCallback onSuccess;
 
   @override
@@ -19,77 +21,97 @@ class KioskStationScanScreen extends StatefulWidget {
 class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
   final MobileScannerController controller = MobileScannerController();
   bool _hasScanned = false;
+  bool _isLight = false;
 
-  void _onDetect(BarcodeCapture capture) async {
+  Future<void> _onDetect(BarcodeCapture capture) async {
     if (_hasScanned) return;
+
     final List<Barcode> barcodes = capture.barcodes;
     for (final barcode in barcodes) {
-      if (barcode.rawValue != null) {
-        try {
-          final data = jsonDecode(barcode.rawValue!);
-          if (data['type'] == 'station_pointage') {
-            setState(() => _hasScanned = true);
-            
-            // Loader d'attente stylisé via SnackBar (comme demandé)
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: const [
-                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
-                    SizedBox(width: 16),
-                    Text('Vérification du code...', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
-                  ],
+      if (barcode.rawValue == null) continue;
+
+      try {
+        final data = jsonDecode(barcode.rawValue!);
+        if (data['type'] != 'station_pointage') continue;
+
+        setState(() => _hasScanned = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
                 ),
-                backgroundColor: KioskColors.primary,
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.all(20),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                duration: const Duration(seconds: 15),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Verification du code station...',
+                    style: TextStyle(
+                      fontFamily: 'Ubuntu',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: KioskColors.accent,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(20),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 15),
+          ),
+        );
+
+        await controller.stop();
+
+        tagsController.setStation(data);
+        final res = await HttpManager().identifyStation();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+        if (res == "success") {
+          localStorage.write('active_station', data);
+          widget.onSuccess();
+        } else {
+          setState(() => _hasScanned = false);
+          await controller.start();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                res.toString(),
+                style: const TextStyle(
+                  fontFamily: 'Ubuntu',
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            );
-
-            await controller.stop();
-
-            tagsController.setStation(data);
-            final http = HttpManager();
-            final res = await http.identifyStation();
-            
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-            if (res == "success") {
-              // Persister la station localement
-              localStorage.write('active_station', data);
-              
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Station identifiée : ${data['name']}', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
-                  backgroundColor: KioskColors.success,
-                  behavior: SnackBarBehavior.floating,
-                  margin: const EdgeInsets.all(20),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                ),
-              );
-              widget.onSuccess();
-            } else {
-              setState(() => _hasScanned = false);
-              await controller.start();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(res.toString(), style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
-                  backgroundColor: KioskColors.danger,
-                  behavior: SnackBarBehavior.floating,
-                  margin: const EdgeInsets.all(20),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                ),
-              );
-            }
-            break;
-          }
-        } catch (e) {
-          debugPrint("QR Code non valide");
+              backgroundColor: KioskColors.danger,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(20),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
         }
+        break;
+      } catch (_) {
+        debugPrint("QR code invalide");
       }
     }
+  }
+
+  Future<void> _restartScan() async {
+    setState(() => _hasScanned = false);
+    await controller.start();
   }
 
   @override
@@ -101,26 +123,68 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
   @override
   Widget build(BuildContext context) {
     final scale = kioskScale(context);
+    final frameSize = 250 * scale;
+
     return KioskScaffold(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const KioskBrandHeader(),
-          SizedBox(height: 40 * scale),
-          Text("Scanner la Station", style: kioskTitle(context)),
+          const Align(alignment: Alignment.center, child: KioskBrandHeader()),
+          SizedBox(height: 28 * scale),
+          Text(
+            "Connexion de la station",
+            textAlign: TextAlign.center,
+            style: kioskTitle(context).copyWith(fontSize: 30 * scale),
+          ),
+          SizedBox(height: 8 * scale),
+          Text(
+            "Cadrez le QR code de votre station dans la zone de lecture.",
+            textAlign: TextAlign.center,
+            style: kioskBody(context),
+          ),
           const Spacer(),
           Center(
             child: Obx(() {
-              if (tagsController.currentPageIndex.value != 1) return const SizedBox.shrink();
+              if (tagsController.currentPageIndex.value != 1) {
+                return const SizedBox.shrink();
+              }
+
               return Container(
                 width: 380 * scale,
                 height: 380 * scale,
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22 * scale),
+                ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(22 * scale),
                   child: Stack(
                     children: [
-                      MobileScanner(controller: controller, onDetect: _onDetect),
-                      const KioskScanFrame(size: 280),
+                      Center(
+                        child: SizedBox(
+                          width: frameSize,
+                          height: frameSize,
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final scanWindow = Rect.fromLTWH(
+                                0,
+                                0,
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              );
+
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(28 * scale),
+                                child: MobileScanner(
+                                  controller: controller,
+                                  onDetect: _onDetect,
+                                  scanWindow: scanWindow,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      Center(child: KioskScanFrame(size: frameSize)),
                     ],
                   ),
                 ),
@@ -128,8 +192,33 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
             }),
           ),
           const Spacer(),
-          ScannerControl(icon: Icons.flash_on_rounded, onTap: () => controller.toggleTorch()),
-          SizedBox(height: 32 * scale),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ScannerControl(
+                icon: _isLight
+                    ? Icons.flash_off_rounded
+                    : Icons.flash_on_rounded,
+                onTap: () {
+                  controller.toggleTorch();
+                  setState(() => _isLight = !_isLight);
+                },
+              ),
+              if (_hasScanned) ...[
+                SizedBox(width: 12 * scale),
+                ScannerControl(
+                  icon: Icons.restart_alt_rounded,
+                  onTap: _restartScan,
+                ),
+              ],
+            ],
+          ),
+          SizedBox(height: 10 * scale),
+          Text(
+            "Astuce: tenez le code a 20-30 cm de la camera.",
+            textAlign: TextAlign.center,
+            style: kioskCaption(context),
+          ),
         ],
       ),
     );

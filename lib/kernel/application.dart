@@ -1,6 +1,5 @@
 import '/constants/styles.dart';
 import '/global/store.dart';
-import '/kernel/controllers/auth_controller.dart';
 import '/kernel/controllers/face_recognition_controller.dart';
 import '/kernel/controllers/tag_controller.dart';
 import '/screens/public/attendance_shell.dart';
@@ -49,9 +48,23 @@ class _ApplicationState extends State<Application> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
-              backgroundColor: darkGreyColor,
+              backgroundColor: Color(0xFFF3F6FC),
               body: Center(
-                child: CircularProgressIndicator(color: primaryMaterialColor),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: primaryMaterialColor),
+                    SizedBox(height: 14),
+                    Text(
+                      "Chargement de l'application...",
+                      style: TextStyle(
+                        color: blackColor60,
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           } else if (snapshot.hasError) {
@@ -75,7 +88,6 @@ class _ApplicationState extends State<Application> {
 class InitialBinding extends Bindings {
   @override
   void dependencies() {
-    Get.put(AuthController());
     Get.put(TagsController());
     Get.put(FaceRecognitionController());
   }

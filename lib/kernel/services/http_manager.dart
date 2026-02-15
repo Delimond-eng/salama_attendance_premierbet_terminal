@@ -2,29 +2,27 @@ import 'dart:async';
 import 'dart:io';
 
 import '/global/controllers.dart';
-import '/kernel/models/supervisor_data.dart';
 import '/kernel/services/api.dart';
-
-SupervisorDataResponse parseSupervisorData(dynamic json) {
-  return SupervisorDataResponse.fromJson(json as Map<String, dynamic>);
-}
 
 class HttpManager {
   /// Extrait un message d'erreur lisible depuis la réponse Laravel
   String _extractErrorMessage(dynamic response) {
     if (response == null) return "Le serveur n'a renvoyé aucune réponse.";
-    
+
     if (response is Map) {
       if (response.containsKey("errors")) {
         var err = response["errors"];
         if (err is List && err.isNotEmpty) return err[0].toString();
         if (err is Map && err.isNotEmpty) {
           var firstVal = err.values.first;
-          return firstVal is List ? firstVal[0].toString() : firstVal.toString();
+          return firstVal is List
+              ? firstVal[0].toString()
+              : firstVal.toString();
         }
         return err.toString();
       }
-      if (response.containsKey("message")) return response["message"].toString();
+      if (response.containsKey("message"))
+        return response["message"].toString();
     }
     return "Une erreur inconnue est survenue.";
   }
@@ -61,7 +59,8 @@ class HttpManager {
         body: data,
       );
       if (response != null && response is Map) {
-        if (response.containsKey("errors")) return _extractErrorMessage(response);
+        if (response.containsKey("errors"))
+          return _extractErrorMessage(response);
         return "success";
       }
       return _extractErrorMessage(response);
@@ -77,7 +76,7 @@ class HttpManager {
       Map<String, dynamic> data = {
         "matricule": tagsController.faceResult.value,
         "station_id": tagsController.activeStation.value?['id'],
-        "coordonnees": "", 
+        "coordonnees": "",
         "key": formattedKey,
       };
 

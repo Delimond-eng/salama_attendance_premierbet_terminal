@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '/global/controllers.dart';
 import '/global/store.dart';
-import 'kiosk/kiosk_components.dart';
 import 'kiosk/kiosk_start_screen.dart';
 import 'kiosk/kiosk_station_scan_screen.dart';
 import 'kiosk/kiosk_attendance_shell_screen.dart';
@@ -36,7 +35,6 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
   }
 
   void _updatePage(int index) {
-    tagsController.setPage(index);
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 600),
@@ -58,40 +56,50 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
           physics: const NeverScrollableScrollPhysics(),
           onPageChanged: (index) => tagsController.setPage(index),
           children: [
-            KioskStartScreen(onStart: () {
-              // Si une station est déjà scannée, on va directement au Shell (Page 2)
-              if (tagsController.activeStation.value != null) {
-                _updatePage(2);
-              } else {
-                _updatePage(1);
-              }
-            }),
+            KioskStartScreen(
+              onStart: () {
+                // Si une station est déjà scannée, on va directement au Shell (Page 2)
+                if (tagsController.activeStation.value != null) {
+                  _updatePage(2);
+                } else {
+                  _updatePage(1);
+                }
+              },
+            ),
             KioskStationScanScreen(onSuccess: () => _updatePage(2)),
             KioskAttendanceShellScreen(
               onCheckAction: (type) {
                 tagsController.setAttendanceType(type);
-                Get.to(() => KioskFaceScanPage(
-                  onSuccess: () => _updatePage(3),
-                  onCancel: () => Get.back(),
-                ));
+                Get.to(
+                  () => KioskFaceScanPage(
+                    onSuccess: () => _updatePage(3),
+                    onCancel: () => Get.back(),
+                  ),
+                );
               },
               onEnrollAction: () {
                 tagsController.setAttendanceType("ENROLL");
-                Get.to(() => KioskEnrollPage(
-                  onSuccess: () => _updatePage(3),
-                  onCancel: () => Get.back(),
-                ));
+                Get.to(
+                  () => KioskEnrollPage(
+                    onSuccess: () => _updatePage(3),
+                    onCancel: () => Get.back(),
+                  ),
+                );
               },
               onBack: () {
                 tagsController.resetKiosk();
-                localStorage.remove('active_station'); // Clear persistence on explicit back
+                localStorage.remove(
+                  'active_station',
+                ); // Clear persistence on explicit back
                 _updatePage(1);
               },
             ),
-            KioskSuccessScreen(onDone: () {
-              // Après succès, on revient au Shell (Page 2) si la station est gardée
-              _updatePage(2);
-            }),
+            KioskSuccessScreen(
+              onDone: () {
+                // Après succès, on revient au Shell (Page 2) si la station est gardée
+                _updatePage(2);
+              },
+            ),
             KioskFailureScreen(
               onRetry: () => Get.back(),
               onCancel: () {
