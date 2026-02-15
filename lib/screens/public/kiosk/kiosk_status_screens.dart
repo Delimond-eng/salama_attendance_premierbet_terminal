@@ -40,7 +40,7 @@ class KioskSuccessScreen extends StatelessWidget {
             ),
             SizedBox(height: 9 * scale),
             Text(
-              "Le pointage a Ã©Ã©e enregistrÃ© avec succes.",
+              "Le pointage a été enregistré avec succes.",
               textAlign: TextAlign.center,
               style: kioskBody(context),
             ),
@@ -65,7 +65,7 @@ class KioskSuccessScreen extends StatelessWidget {
                   SizedBox(width: 14 * scale),
                   Expanded(
                     child: Text(
-                      "Vous pouvez enchaÃ®ner avec un nouveau pointage.",
+                      "Vous pouvez enchaîner avec un nouveau pointage.",
                       style: kioskCaption(
                         context,
                       ).copyWith(color: KioskColors.textMid),
