@@ -9,6 +9,7 @@ import 'kiosk/kiosk_attendance_shell_screen.dart';
 import 'kiosk/kiosk_face_scan_page.dart';
 import 'kiosk/kiosk_enroll_page.dart';
 import 'kiosk/kiosk_status_screens.dart';
+import 'kiosk/kiosk_components.dart';
 
 class KioskMockupsGallery extends StatefulWidget {
   const KioskMockupsGallery({super.key});
@@ -77,14 +78,21 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
                   ),
                 );
               },
-              onEnrollAction: () {
-                tagsController.setAttendanceType("ENROLL");
-                Get.to(
-                  () => KioskEnrollPage(
-                    onSuccess: () => _updatePage(3),
-                    onCancel: () => Get.back(),
-                  ),
+              onEnrollAction: () async {
+                final authenticated = await Get.dialog<bool>(
+                  const KioskAdminPasswordDialog(),
+                  barrierDismissible: true,
                 );
+
+                if (authenticated == true) {
+                  tagsController.setAttendanceType("ENROLL");
+                  Get.to(
+                    () => KioskEnrollPage(
+                      onSuccess: () => _updatePage(3),
+                      onCancel: () => Get.back(),
+                    ),
+                  );
+                }
               },
               onBack: () {
                 tagsController.resetKiosk();

@@ -706,3 +706,159 @@ class CaptureAction extends StatelessWidget {
     );
   }
 }
+
+class KioskAdminPasswordDialog extends StatefulWidget {
+  const KioskAdminPasswordDialog({super.key});
+
+  @override
+  State<KioskAdminPasswordDialog> createState() =>
+      _KioskAdminPasswordDialogState();
+}
+
+class _KioskAdminPasswordDialogState extends State<KioskAdminPasswordDialog> {
+  final TextEditingController _controller = TextEditingController();
+  String? _error;
+
+  void _validate() {
+    if (_controller.text == '2026') {
+      Get.back(result: true);
+    } else {
+      setState(() {
+        _error = 'Mot de passe incorrect';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = kioskScale(context);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: KioskColors.surface,
+          borderRadius: BorderRadius.circular(28 * scale),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56 * scale,
+              height: 56 * scale,
+              decoration: const BoxDecoration(
+                color: KioskColors.primarySoftBg,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.lock_person_rounded,
+                color: KioskColors.primary,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              "Accès Administrateur",
+              style: kioskSubtitle(context),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Veuillez saisir le mot de passe pour continuer l'enrôlement.",
+              textAlign: TextAlign.center,
+              style: kioskBody(context).copyWith(fontSize: 13 * scale),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _controller,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 4,
+              ),
+              decoration: InputDecoration(
+                hintText: "••••",
+                hintStyle: TextStyle(
+                  color: KioskColors.textLow.withValues(alpha: 0.5),
+                  letterSpacing: 4,
+                ),
+                errorText: _error,
+                filled: true,
+                fillColor: KioskColors.surfaceMuted,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 18,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16 * scale),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16 * scale),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16 * scale),
+                  borderSide: const BorderSide(
+                    color: KioskColors.primary,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+              onSubmitted: (_) => _validate(),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Get.back(),
+                    child: const Text(
+                      "Annuler",
+                      style: TextStyle(
+                        color: KioskColors.textMid,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Ubuntu',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _validate,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: KioskColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14 * scale),
+                      ),
+                    ),
+                    child: const Text(
+                      "Valider",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'Ubuntu',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -50,7 +50,7 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
                 SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Verification du code station...',
+                    'Vérification du code station...',
                     style: TextStyle(
                       fontFamily: 'Ubuntu',
                       fontWeight: FontWeight.w600,
@@ -215,7 +215,7 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
           ),
           SizedBox(height: 10 * scale),
           Text(
-            "Astuce: tenez le code a 20-30 cm de la camera.",
+            "Astuce: tenez le code à 20-30 cm de la camera.",
             textAlign: TextAlign.center,
             style: kioskCaption(context),
           ),

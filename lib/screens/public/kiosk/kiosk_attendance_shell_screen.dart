@@ -89,7 +89,7 @@ class KioskAttendanceShellScreen extends StatelessWidget {
                         ),
                         const Spacer(),
                         KioskOutlineButton(
-                          label: "Enroler le visage d'un agent",
+                          label: "Enrôler le visage d'un agent",
                           icon: Icons.face_retouching_natural_rounded,
                           height: 70,
                           onPressed: onEnrollAction,
@@ -224,7 +224,7 @@ class _StationHeroSliverHeader extends StatelessWidget {
                   _WhitePill(
                     scale: scale,
                     icon: Icons.verified_rounded,
-                    label: 'Station identifiee et prete',
+                    label: 'Station identifiée et prête',
                   ),
                 ],
               ),
