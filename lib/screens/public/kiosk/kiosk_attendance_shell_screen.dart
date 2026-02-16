@@ -74,16 +74,28 @@ class KioskAttendanceShellScreen extends StatelessWidget {
                         const Spacer(),
                         KioskActionButton(
                           title: 'CHECK-IN',
-                          subtitle: 'Enregistrer une entree',
+                          subtitle: 'Enregistrer une entrée',
                           icon: Icons.login_rounded,
                           color: KioskColors.success,
                           onPressed: () => onCheckAction('check-in'),
                         ),
-                        SizedBox(height: 14 * scale),
+
+                        SizedBox(height: 10 * scale),
+
+                        KioskActionButton(
+                          title: 'CONFIRMATION',
+                          subtitle: 'Contrôle intermédiaire',
+                          icon: Icons.verified_user,
+                          color: KioskColors.accent,
+                          onPressed: () => onCheckAction('confirmation'),
+                        ),
+
+                        SizedBox(height: 10 * scale),
+
                         KioskActionButton(
                           title: 'CHECK-OUT',
                           subtitle: 'Enregistrer une sortie',
-                          icon: Icons.logout_rounded,
+                          icon: Icons.login_rounded,
                           color: KioskColors.danger,
                           onPressed: () => onCheckAction('check-out'),
                         ),
