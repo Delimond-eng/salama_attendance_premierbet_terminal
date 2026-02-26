@@ -1,29 +1,19 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
-
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '/global/controllers.dart';
 import '/kernel/services/http_manager.dart';
+import '/kernel/controllers/face_recognition_controller.dart';
 import 'kiosk_components.dart';
 
-const _kioskDarkStatusBarStyle = SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.dark,
-  statusBarBrightness: Brightness.light,
-);
-
 class KioskFaceScanPage extends StatefulWidget {
-  const KioskFaceScanPage({
-    super.key,
-    required this.onSuccess,
-    required this.onCancel,
-  });
-
+  const KioskFaceScanPage({super.key, required this.onSuccess, required this.onCancel});
   final VoidCallback onSuccess;
   final VoidCallback onCancel;
 
@@ -32,387 +22,434 @@ class KioskFaceScanPage extends StatefulWidget {
 }
 
 class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
-  static const EventChannel _volumeKeyChannel = EventChannel(
-    'salama/volume_keys',
-  );
-
   CameraController? _controller;
   Future<void>? _initializeControllerFuture;
   XFile? _capturedImage;
   String? _detectedMatricule;
-  StreamSubscription<dynamic>? _volumeKeySubscription;
-  bool _volumeCaptureInProgress = false;
+  bool _isBusy = false;
+  bool _isSuccess = false;
+  bool _hasBlinked = false;
+  bool _showFlash = false;
+  String _hint = "Positionnez votre visage";
 
-  bool get _isRecognized =>
-      _detectedMatricule != null && _detectedMatricule != 'Inconnu';
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(enableClassification: true, performanceMode: FaceDetectorMode.accurate),
+  );
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 300), _initCamera);
-    _listenVolumeUpCapture();
-  }
-
-  void _listenVolumeUpCapture() {
-    _volumeKeySubscription = _volumeKeyChannel.receiveBroadcastStream().listen(
-      (event) async {
-        if (event != 'volume_up') return;
-        if (!mounted || _capturedImage != null || _volumeCaptureInProgress) {
-          return;
-        }
-
-        _volumeCaptureInProgress = true;
-        try {
-          await _captureAndAnalyze();
-        } finally {
-          _volumeCaptureInProgress = false;
-        }
-      },
-      onError: (error) {
-        debugPrint('Volume key stream error: $error');
-      },
-    );
+    _initCamera();
   }
 
   Future<void> _initCamera() async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
-
-    await _controller?.dispose();
-
-    var selectedIndex = tagsController.cameraIndex.value;
-    if (selectedIndex < 0 || selectedIndex >= cameras.length) {
-      selectedIndex = 0;
-      tagsController.cameraIndex.value = 0;
-    }
-
+    
     _controller = CameraController(
-      cameras[selectedIndex],
-      ResolutionPreset.medium,
+      cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front), 
+      ResolutionPreset.low,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
+      imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
     );
+    
+    await _controller!.initialize();
+    if (!mounted) return;
+    setState(() {});
 
+    _controller!.startImageStream((image) {
+      if (_isBusy || _isSuccess) return;
+      _isBusy = true;
+      _processCameraImage(image);
+    });
+  }
+
+  Future<void> _processCameraImage(CameraImage image) async {
     try {
-      _initializeControllerFuture = _controller!.initialize();
-      if (mounted) setState(() {});
+      final inputImage = _inputImageFromCameraImage(image);
+      if (inputImage == null) {
+        _isBusy = false;
+        return;
+      }
+
+      final faces = await _faceDetector.processImage(inputImage);
+      if (faces.isEmpty) {
+        if (mounted) setState(() => _hint = "Visage non détecté");
+      } else {
+        final face = faces.first;
+        
+        if (!_hasBlinked) {
+          if ((face.leftEyeOpenProbability ?? 1.0) < 0.4) {
+            _hasBlinked = true;
+          }
+          if (mounted) setState(() => _hint = "Veuillez cligner des yeux");
+        } else {
+          if (mounted) setState(() => _hint = "Analyse en cours...");
+          
+          if (mounted) {
+            setState(() => _showFlash = true);
+            Future.delayed(const Duration(milliseconds: 150), () {
+              if (mounted) setState(() => _showFlash = false);
+            });
+          }
+
+          final file = await _controller!.takePicture();
+          final res = await faceRecognitionController.recognizeFaceFromImage(file);
+          
+          if (res != null && res != 'Inconnu') {
+            if (mounted) {
+              setState(() { 
+                _detectedMatricule = res; 
+                _capturedImage = file; 
+                _isSuccess = true; 
+              });
+            }
+            await _controller!.stopImageStream();
+          } else {
+            _hasBlinked = false;
+          }
+        }
+      }
     } catch (e) {
-      debugPrint('Erreur Camera: $e');
+      debugPrint("Error: $e");
+    } finally {
+      _isBusy = false;
     }
   }
 
-  Future<void> _switchCamera() async {
-    final cameras = await availableCameras();
-    if (cameras.length < 2) return;
-
-    tagsController.cameraIndex.value =
-        (tagsController.cameraIndex.value + 1) % cameras.length;
-    await _initCamera();
-  }
-
-  Future<void> _captureAndAnalyze() async {
+  InputImage? _inputImageFromCameraImage(CameraImage image) {
     try {
-      final image = await _controller?.takePicture();
-      if (image == null) return;
-
-      setState(() {
-        _capturedImage = image;
-        _detectedMatricule = null;
-      });
-
-      final matricule = await faceRecognitionController.recognizeFaceFromImage(
-        image,
+      final bytes = Uint8List.fromList(
+        image.planes.fold<List<int>>([], (buffer, plane) => buffer..addAll(plane.bytes)),
       );
 
-      if (!mounted) return;
-      setState(() {
-        _detectedMatricule = matricule;
-      });
-    } catch (e) {
-      debugPrint('Erreur capture/analyse: $e');
+      return InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: InputImageRotation.rotation270deg,
+          format: InputImageFormat.nv21,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        ),
+      );
+    } catch (_) {
+      return null;
     }
   }
 
-  Future<void> _submitPresence() async {
-    if (_detectedMatricule == null || _capturedImage == null) return;
-
-    EasyLoading.show(status: 'Envoi...');
+  Future<void> _submit(String type) async {
+    EasyLoading.show(status: 'Pointage...');
+    tagsController.attendanceType.value = type;
     tagsController.faceResult.value = _detectedMatricule!;
     tagsController.face.value = _capturedImage;
-
-    final res = await HttpManager().checkPresence(
-      key: tagsController.attendanceType.value,
-    );
-
+    final res = await HttpManager().checkPresence(key: type);
     EasyLoading.dismiss();
-    if (!mounted) return;
-
-    if (res == 'success') {
-      Get.back();
-      widget.onSuccess();
-    } else {
-      EasyLoading.showInfo(
-        res.toString(),
-        duration: const Duration(seconds: 4),
-      );
-      setState(() {
-        _capturedImage = null;
-        _detectedMatricule = null;
-      });
+    if (res == 'success') { 
+      Get.back(); 
+      widget.onSuccess(); 
     }
+  }
+
+  void _resetCamera() {
+    setState(() {
+      _isSuccess = false;
+      _capturedImage = null;
+      _detectedMatricule = null;
+      _hasBlinked = false;
+      _hint = "Positionnez votre visage";
+    });
+    _initCamera();
   }
 
   @override
   void dispose() {
-    _volumeKeySubscription?.cancel();
     _controller?.dispose();
+    _faceDetector.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final scale = kioskScale(context);
-
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: _kioskDarkStatusBarStyle,
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
       child: Scaffold(
         backgroundColor: KioskColors.background,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: widget.onCancel,
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: KioskColors.textHigh,
-                      ),
-                    ),
-                    const Spacer(),
-                    Obx(
-                      () => KioskBadge(
-                        label: tagsController.attendanceType.value.toUpperCase(),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 20 * scale),
-                Text(
-                  'Verification faciale',
-                  textAlign: TextAlign.center,
-                  style: kioskTitle(context).copyWith(fontSize: 28 * scale),
-                ),
-                SizedBox(height: 10 * scale),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: _detectedMatricule == null
-                      ? Text(
-                          'Cadrez le visage puis capturez.',
-                          textAlign: TextAlign.center,
-                          style: kioskBody(
-                            context,
-                          ).copyWith(fontSize: 13.5 * scale),
-                        )
-                      : Wrap(
-                          spacing: 8 * scale,
-                          runSpacing: 8 * scale,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            _MatriculeBadge(
-                              label: _isRecognized
-                                  ? 'MATRICULE: $_detectedMatricule'
-                                  : 'VISAGE INCONNU',
-                              isSuccess: _isRecognized,
-                            ),
-                          ],
-                        ),
-                ),
-                const Spacer(),
-                Column(
-                  children: [
-                    Container(
-                      width: 340 * scale,
-                      height: 340 * scale,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: KioskColors.primary, width: 4),
-                      ),
-                      child: ClipOval(child: _buildCameraPreview()),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                if (_capturedImage == null)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _BottomActionButton(
-                          icon: Icons.flip_camera_ios_rounded,
-                          label: 'Camera',
-                          color: const Color(0xFF4C83FF),
-                          onTap: _switchCamera,
-                        ),
-                      ),
-                      SizedBox(width: 10 * scale),
-                      Expanded(
-                        child: _BottomActionButton(
-                          icon: Icons.camera_alt_rounded,
-                          label: 'Capturer',
-                          color: KioskColors.primary,
-                          isPrimary: true,
-                          onTap: _captureAndAnalyze,
-                        ),
-                      ),
-                      SizedBox(width: 10 * scale),
-                      Expanded(
-                        child: _BottomActionButton(
-                          icon: Icons.close_rounded,
-                          label: 'Annuler',
-                          color: const Color(0xFF8C96AB),
-                          onTap: widget.onCancel,
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _BottomActionButton(
-                          icon: Icons.refresh_rounded,
-                          label: 'Reprendre',
-                          color: KioskColors.textMid,
-                          onTap: () => setState(() {
-                            _capturedImage = null;
-                            _detectedMatricule = null;
-                          }),
-                        ),
-                      ),
-                      if (_isRecognized) ...[
-                        SizedBox(width: 10 * scale),
-                        Expanded(
-                          child: _BottomActionButton(
-                            icon: Icons.check_rounded,
-                            label: 'Valider',
-                            color: KioskColors.success,
-                            isPrimary: true,
-                            onTap: _submitPresence,
-                          ),
-                        ),
-                      ],
-                    ],
+        body: Stack(
+          children: [
+            SafeArea(
+              bottom: true,
+              child: Column(
+                children: [
+                  _buildTopBar(),
+                  SizedBox(height: 8 * scale),
+                  Text(
+                    _isSuccess ? "Identifié" : _hint, 
+                    style: kioskTitle(context).copyWith(fontSize: 24 * scale)
                   ),
-                SizedBox(height: 48 * scale),
-              ],
+                  if (_isSuccess) ...[
+                    SizedBox(height: 12 * scale),
+                    _buildMatriculeBadge(scale),
+                  ],
+                  const Spacer(),
+                  _buildCameraCircle(scale),
+                  const Spacer(),
+                  if (!_isSuccess) _buildLoader(scale),
+                  if (_isSuccess) ...[
+                    Text(
+                      "Sélectionnez votre action de pointage :",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: KioskColors.textMid,
+                        fontFamily: 'Ubuntu',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13 * scale,
+                      ),
+                    ),
+                    SizedBox(height: 12 * scale),
+                    Flexible(
+                      flex: 8,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: _buildActionGrid(context, scale),
+                      )
+                    ),
+                  ],
+                  SizedBox(height: 10 * scale),
+                ],
+              ),
             ),
-          ),
+            if (_showFlash) Positioned.fill(child: Container(color: Colors.white)),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildCameraPreview() {
-    if (_capturedImage != null) {
-      return Image.file(File(_capturedImage!.path), fit: BoxFit.cover);
-    }
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Row(children: [IconButton(onPressed: widget.onCancel, icon: const Icon(Icons.close)), const Spacer(), const KioskBadge(label: "SCAN BIOMÉTRIQUE")]),
+    );
+  }
 
-    return FutureBuilder<void>(
-      future: _initializeControllerFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done &&
-            _controller != null) {
-          return FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _controller!.value.previewSize?.height,
-              height: _controller!.value.previewSize?.width,
-              child: CameraPreview(_controller!),
+  Widget _buildMatriculeBadge(double scale) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: KioskColors.success.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: KioskColors.success.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.face_retouching_natural_rounded, color: KioskColors.success, size: 22 * scale),
+          SizedBox(width: 10 * scale),
+          Text(
+            _detectedMatricule!,
+            style: TextStyle(
+              fontFamily: 'Ubuntu',
+              fontSize: 18 * scale,
+              fontWeight: FontWeight.w800,
+              color: KioskColors.success
             ),
-          );
-        }
+          ),
+        ],
+      ),
+    );
+  }
 
-        return const Center(
-          child: CircularProgressIndicator(color: KioskColors.primary),
-        );
-      },
+  Widget _buildLoader(double scale) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 40),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.purple.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.purple.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 16 * scale,
+            height: 16 * scale,
+            child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.purple),
+          ),
+          SizedBox(width: 12 * scale),
+          Text(
+            "Analyse biométrique en cours...",
+            style: TextStyle(
+              fontFamily: 'Ubuntu',
+              color: Colors.purple.shade700,
+              fontWeight: FontWeight.w700,
+              fontSize: 13 * scale
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraCircle(double scale) {
+    return Container(
+      width: 260 * scale, height: 260 * scale,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle, 
+        border: Border.all(color: _isSuccess ? KioskColors.success : KioskColors.primary, width: 6),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))
+        ]
+      ),
+      child: ClipOval(
+        child: _isSuccess && _capturedImage != null 
+          ? Image.file(File(_capturedImage!.path), fit: BoxFit.cover) 
+          : (_controller != null && _controller!.value.isInitialized 
+              ? FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _controller!.value.previewSize?.height,
+                    height: _controller!.value.previewSize?.width,
+                    child: CameraPreview(_controller!),
+                  ),
+                )
+              : const Center(child: CircularProgressIndicator())),
+      ),
+    );
+  }
+
+  Widget _buildActionGrid(BuildContext context, double scale) {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(children: [
+            _ReferenceButton(
+              icon: Icons.login_rounded, 
+              label: 'Check In', 
+              color: Colors.green, 
+              secondaryColor: Colors.greenAccent, 
+              onTap: () => _submit('check-in')
+            ), 
+            _ReferenceButton(
+              icon: Icons.logout_rounded, 
+              label: 'Check Out', 
+              color: Colors.red, 
+              secondaryColor: Colors.redAccent, 
+              onTap: () => _submit('check-out')
+            )
+          ]),
+          Row(children: [
+            _ReferenceButton(
+              icon: Icons.verified_user_rounded, 
+              label: 'Confirmation', 
+              color: Colors.orange, 
+              secondaryColor: Colors.orangeAccent, 
+              onTap: () => _submit('confirmation')
+            ), 
+            _ReferenceButton(
+              icon: Icons.build_circle_rounded, 
+              label: 'Maint. In', 
+              color: Colors.deepPurple, 
+              secondaryColor: Colors.purpleAccent, 
+              onTap: () => _submit('maintenance-in')
+            )
+          ]),
+          Row(children: [
+            _ReferenceButton(
+              icon: Icons.hail_rounded, 
+              label: 'Maint. Out', 
+              color: Colors.pink, 
+              secondaryColor: Colors.pinkAccent, 
+              onTap: () => _submit('maintenance-out')
+            ), 
+            _ReferenceButton(
+              icon: Icons.refresh_rounded, 
+              label: 'Relancer', 
+              color: Colors.blueGrey.shade800, 
+              secondaryColor: Colors.blueGrey.shade400, 
+              onTap: _resetCamera
+            )
+          ]),
+        ],
+      ),
     );
   }
 }
 
-class _BottomActionButton extends StatelessWidget {
-  const _BottomActionButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-    this.isPrimary = false,
-  });
-
+class _ReferenceButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
+  final Color secondaryColor;
   final VoidCallback onTap;
-  final bool isPrimary;
+
+  const _ReferenceButton({
+    required this.icon, 
+    required this.label, 
+    required this.color, 
+    required this.secondaryColor, 
+    required this.onTap
+  });
 
   @override
   Widget build(BuildContext context) {
     final scale = kioskScale(context);
-    return SizedBox(
-      height: 58 * scale,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 18 * scale),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontFamily: 'Ubuntu',
-            fontWeight: FontWeight.w700,
-            fontSize: 12.5 * scale,
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(15),
+          child: Container(
+            height: 60 * scale,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: color.withOpacity(0.3), width: 1.2),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start, // ALIGNEMENT START
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [color, secondaryColor],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 18 * scale),
+                  ),
+                  SizedBox(width: 15 * scale), // ESPACEMENT FIXE
+                  Flexible(
+                    child: Text(
+                      label, 
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color.withOpacity(0.9), 
+                        fontWeight: FontWeight.w800, 
+                        fontSize: 11 * scale, 
+                        fontFamily: 'Ubuntu'
+                      )
+                    ),
+                  )
+                ],
+              ),
+            ),
           ),
-        ),
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16 * scale),
-          ),
-          shadowColor: color.withValues(alpha: isPrimary ? 0.25 : 0.12),
-        ),
-      ),
-    );
-  }
-}
-
-class _MatriculeBadge extends StatelessWidget {
-  const _MatriculeBadge({required this.label, required this.isSuccess});
-
-  final String label;
-  final bool isSuccess;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isSuccess ? KioskColors.success : KioskColors.danger;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withValues(alpha: 0.32)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w800,
-          fontFamily: 'Ubuntu',
-          fontSize: 12 * kioskScale(context),
-          letterSpacing: 0.25,
         ),
       ),
     );

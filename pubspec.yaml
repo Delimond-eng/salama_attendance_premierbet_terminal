@@ -34,7 +34,7 @@ dependencies:
   google_mlkit_face_detection: ^0.13.1
   image: ^3.3.0
   tflite_flutter: ^0.11.0
-  camera: ^0.11.1
+  camera: ^0.11.3+1
   provider: ^6.1.5
   mobile_scanner: ^7.0.0
   image_picker: ^1.1.2
@@ -89,4 +89,3 @@ flutter:
         - asset: assets/fonts/Ubuntu/Ubuntu-Medium.ttf
         - asset: assets/fonts/Ubuntu/Ubuntu-MediumItalic.ttf
         - asset: assets/fonts/Ubuntu/Ubuntu-Regular.ttf
-

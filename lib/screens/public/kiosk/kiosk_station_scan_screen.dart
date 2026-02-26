@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '/global/controllers.dart';
 import '/global/store.dart';
@@ -18,10 +19,34 @@ class KioskStationScanScreen extends StatefulWidget {
   State<KioskStationScanScreen> createState() => _KioskStationScanScreenState();
 }
 
-class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
-  final MobileScannerController controller = MobileScannerController();
+class _KioskStationScanScreenState extends State<KioskStationScanScreen> with WidgetsBindingObserver {
+  MobileScannerController controller = MobileScannerController();
   bool _hasScanned = false;
   bool _isLight = false;
+  bool _isPermissionGranted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkPermission();
+  }
+
+  Future<void> _checkPermission() async {
+    final status = await Permission.camera.request();
+    if (status.isGranted) {
+      setState(() {
+        _isPermissionGranted = true;
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isPermissionGranted) {
+      controller.start();
+    }
+  }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_hasScanned) return;
@@ -116,6 +141,7 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     controller.dispose();
     super.dispose();
   }
@@ -147,6 +173,18 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> {
             child: Obx(() {
               if (tagsController.currentPageIndex.value != 1) {
                 return const SizedBox.shrink();
+              }
+
+              if (!_isPermissionGranted) {
+                return Container(
+                  width: frameSize,
+                  height: frameSize,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(28 * scale),
+                  ),
+                  child: const Center(child: CircularProgressIndicator()),
+                );
               }
 
               return Container(

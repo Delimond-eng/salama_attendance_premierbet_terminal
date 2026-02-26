@@ -86,7 +86,7 @@ class _StartScanCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(28 * scale),
           boxShadow: [
             BoxShadow(
-              color: KioskColors.primary.withValues(alpha: 0.28),
+              color: KioskColors.primary.withOpacity(0.28),
               blurRadius: 22,
               offset: const Offset(0, 10),
             ),
@@ -99,15 +99,15 @@ class _StartScanCard extends StatelessWidget {
               height: 86 * scale,
               padding: EdgeInsets.all(18 * scale),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
+                color: Colors.white.withOpacity(0.16),
                 borderRadius: BorderRadius.circular(22 * scale),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.26),
+                  color: Colors.white.withOpacity(0.26),
                   width: 1.2,
                 ),
               ),
               child: SvgPicture.asset(
-                "assets/svgs/scan.svg",
+                "assets/svgs/scan-svgrepo-com.svg",
                 colorFilter: const ColorFilter.mode(
                   Colors.white,
                   BlendMode.srcIn,
@@ -134,7 +134,7 @@ class _StartScanCard extends StatelessWidget {
                   Text(
                     "Pointer pour entrer ou sortir en quelques secondes.",
                     style: kioskCaption(context).copyWith(
-                      color: Colors.white.withValues(alpha: 0.92),
+                      color: Colors.white.withOpacity(0.92),
                       fontSize: 12 * scale,
                     ),
                   ),

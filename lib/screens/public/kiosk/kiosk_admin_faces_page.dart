@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '/kernel/models/face.dart';
@@ -63,7 +64,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text("ANNULER"),
+                child: const Text("ANNULER", style: TextStyle(color: KioskColors.textLow)),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
@@ -86,7 +87,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text("Visage supprime avec succes"),
+        content: const Text("Visage supprimé avec succès"),
         behavior: SnackBarBehavior.floating,
         backgroundColor: KioskColors.success,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -98,45 +99,54 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
   Widget build(BuildContext context) {
     final scale = kioskScale(context);
 
-    return KioskScaffold(
-      padding: EdgeInsets.fromLTRB(
-        18 * scale,
-        14 * scale,
-        18 * scale,
-        10 * scale,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                onPressed: Get.back,
-                icon: Icon(
-                  Icons.close_rounded,
-                  color: KioskColors.textHigh,
-                  size: 22 * scale,
-                ),
-                style: IconButton.styleFrom(
-                  backgroundColor: KioskColors.surface.withValues(alpha: 0.9),
-                  side: BorderSide(
-                    color: KioskColors.outline.withValues(alpha: 0.85),
+      child: KioskScaffold(
+        padding: EdgeInsets.fromLTRB(
+          18 * scale,
+          14 * scale,
+          18 * scale,
+          10 * scale,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  onPressed: Get.back,
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: KioskColors.textHigh,
+                    size: 22 * scale,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: KioskColors.surface.withOpacity(0.9),
+                    side: BorderSide(
+                      color: KioskColors.outline.withOpacity(0.85),
+                    ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              const KioskBadge(label: "ADMIN CONSOLE"),
-            ],
-          ),
-          SizedBox(height: 10 * scale),
-          _AdminHeroCard(
-            facesCount: _faces.length,
-            onRefresh: _loadFaces,
-            scale: scale,
-          ),
-          SizedBox(height: 12 * scale),
-          Expanded(child: _buildContent(context, scale)),
-        ],
+                const Spacer(),
+                const KioskBadge(label: "ADMIN CONSOLE"),
+              ],
+            ),
+            SizedBox(height: 10 * scale),
+            _AdminHeroCard(
+              facesCount: _faces.length,
+              onRefresh: _loadFaces,
+              scale: scale,
+            ),
+            SizedBox(height: 12 * scale),
+            Expanded(child: _buildContent(context, scale)),
+          ],
+        ),
       ),
     );
   }
@@ -166,14 +176,14 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
                   color: KioskColors.primarySoftBg,
                 ),
                 child: Icon(
-                  Icons.person_off_rounded,
+                  Icons.face_retouching_off_rounded,
                   color: KioskColors.primary,
                   size: 28 * scale,
                 ),
               ),
               SizedBox(height: 10 * scale),
               Text(
-                "Aucun agent enrole localement",
+                "Aucun agent enrôlé localement",
                 textAlign: TextAlign.center,
                 style: kioskBody(context).copyWith(
                   color: KioskColors.textHigh,
@@ -225,7 +235,7 @@ class _AdminHeroCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24 * scale),
         boxShadow: [
           BoxShadow(
-            color: KioskColors.primary.withValues(alpha: 0.25),
+            color: KioskColors.primary.withOpacity(0.25),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -240,29 +250,28 @@ class _AdminHeroCard extends StatelessWidget {
                 width: 46 * scale,
                 height: 46 * scale,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(14 * scale),
                 ),
                 child: Icon(
-                  Icons.admin_panel_settings_rounded,
+                  Icons.face_retouching_natural_rounded,
                   color: Colors.white,
                   size: 24 * scale,
                 ),
               ),
               const Spacer(),
               IconButton(
-                onPressed: onRefresh,
                 icon: Icon(Icons.refresh_rounded, size: 22 * scale),
                 style: IconButton.styleFrom(
                   foregroundColor: Colors.white,
-                  backgroundColor: Colors.white.withValues(alpha: 0.16),
-                ),
+                  backgroundColor: Colors.white.withOpacity(0.16),
+                ), onPressed:onRefresh,
               ),
             ],
           ),
           SizedBox(height: 12 * scale),
           Text(
-            "Administration Biometrique",
+            "Administration Biométrique",
             style: TextStyle(
               color: Colors.white,
               fontFamily: 'Ubuntu',
@@ -275,7 +284,7 @@ class _AdminHeroCard extends StatelessWidget {
           Text(
             "Gestion locale des empreintes faciales",
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.9),
+              color: Colors.white.withOpacity(0.9),
               fontFamily: 'Ubuntu',
               fontWeight: FontWeight.w500,
               fontSize: 13 * scale,
@@ -285,7 +294,7 @@ class _AdminHeroCard extends StatelessWidget {
           _CounterPill(
             icon: Icons.groups_rounded,
             label:
-                "$facesCount agent${facesCount > 1 ? 's' : ''} enregistre${facesCount > 1 ? 's' : ''}",
+                "$facesCount agent${facesCount > 1 ? 's' : ''} enregistré${facesCount > 1 ? 's' : ''}",
             scale: scale,
           ),
         ],
@@ -313,7 +322,7 @@ class _CounterPill extends StatelessWidget {
         vertical: 8 * scale,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
+        color: Colors.white.withOpacity(0.18),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -361,12 +370,12 @@ class _FaceCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(10 * scale),
       decoration: BoxDecoration(
-        color: KioskColors.surface.withValues(alpha: 0.92),
+        color: KioskColors.surface.withOpacity(0.92),
         borderRadius: BorderRadius.circular(20 * scale),
-        border: Border.all(color: KioskColors.outline.withValues(alpha: 0.72)),
+        border: Border.all(color: KioskColors.outline.withOpacity(0.72)),
         boxShadow: [
           BoxShadow(
-            color: KioskColors.primaryDark.withValues(alpha: 0.05),
+            color: KioskColors.primaryDark.withOpacity(0.05),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -386,7 +395,7 @@ class _FaceCard extends StatelessWidget {
               child: hasPhoto
                   ? Image.file(File(imagePath), fit: BoxFit.cover)
                   : Icon(
-                      Icons.person_rounded,
+                      Icons.face_retouching_natural_rounded,
                       color: KioskColors.textLow,
                       size: 28 * scale,
                     ),
@@ -419,7 +428,7 @@ class _FaceCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    "Empreinte biometrique",
+                    "Empreinte biométrique",
                     style: TextStyle(
                       fontSize: 11 * scale,
                       fontWeight: FontWeight.w700,
@@ -439,7 +448,7 @@ class _FaceCard extends StatelessWidget {
               size: 22 * scale,
             ),
             style: IconButton.styleFrom(
-              backgroundColor: KioskColors.danger.withValues(alpha: 0.09),
+              backgroundColor: KioskColors.danger.withOpacity(0.09),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12 * scale),
               ),
