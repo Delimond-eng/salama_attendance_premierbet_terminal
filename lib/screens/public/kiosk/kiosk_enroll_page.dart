@@ -255,7 +255,7 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
     
                 if (!_allPhotosTaken)
                   ElevatedButton.icon(
-                    onPressed: _isCapturing ? null : _takeManualPhoto,
+                    onPressed: (_isCapturing || !_facePresent) ? null : _takeManualPhoto,
                     icon: _isCapturing 
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.camera_rounded),
@@ -263,6 +263,8 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: KioskColors.primary,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: KioskColors.outline.withOpacity(0.5),
+                      disabledForegroundColor: KioskColors.textLow,
                       minimumSize: Size(220 * scale, 60 * scale),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
