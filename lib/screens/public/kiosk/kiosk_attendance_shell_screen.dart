@@ -112,24 +112,25 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
                           Expanded(
                             child: KioskOutlineButton(
                               label: "ENROLLER",
-                              icon: Icons.person_add_alt_1_rounded,
-                              height: 60,
+                              icon: Icons.face_retouching_natural_rounded,
+                              height: 40,
                               onPressed: widget.onEnrollAction,
                             ),
                           ),
                           // Le bouton de désactivation/activation du mode Kiosque
+                          // Visible pour quitter (désactiver) uniquement si actif, 
+                          // ou visible pour activer si inactif.
                           if(_isKioskEnabled)...[
                             SizedBox(width: 12 * scale),
                             Expanded(
                               child: KioskOutlineButton(
                                 label: _isKioskEnabled ? "QUITTER ADMIN" : "ACTIVER MDM",
-                                icon: _isKioskEnabled ? CupertinoIcons.shield_slash_fill : CupertinoIcons.checkmark_shield_fill,
-                                height: 60,
+                                icon: _isKioskEnabled ? CupertinoIcons.checkmark_shield : CupertinoIcons.lock_shield,
+                                height: 40,
                                 onPressed: _handleMdmToggle,
                               ),
                             ),
                           ]
-
                         ],
                       ),
                       SizedBox(height: 14 * scale),
@@ -169,14 +170,21 @@ class _PointerButton extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [KioskColors.primary, KioskColors.accent],
+            colors: [Colors.orange, Colors.deepOrange], // Orange vif
           ),
           borderRadius: BorderRadius.circular(28 * scale),
           boxShadow: [
+            // Effet Avatar Glow
             BoxShadow(
-              color: KioskColors.primary.withOpacity(0.28),
-              blurRadius: 22,
+              color: Colors.orange.withOpacity(0.4),
+              blurRadius: 25,
+              spreadRadius: 2,
               offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: Colors.orange.withOpacity(0.2),
+              blurRadius: 45,
+              spreadRadius: 8,
             ),
           ],
         ),

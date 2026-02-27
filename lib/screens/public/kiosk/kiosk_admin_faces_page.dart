@@ -17,7 +17,7 @@ class KioskAdminFacesPage extends StatefulWidget {
 
 class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
   final DatabaseHelper _db = DatabaseHelper();
-  List<FacePicture> _faces = [];
+  Map<String, List<FacePicture>> _groupedFaces = {};
   bool _isLoading = true;
 
   @override
@@ -30,15 +30,24 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
     if (mounted) setState(() => _isLoading = true);
 
     final faces = await _db.getAllFaces();
+    
+    // Regroupement par matricule
+    final Map<String, List<FacePicture>> grouped = {};
+    for (var face in faces) {
+      if (!grouped.containsKey(face.matricule)) {
+        grouped[face.matricule] = [];
+      }
+      grouped[face.matricule]!.add(face);
+    }
 
     if (!mounted) return;
     setState(() {
-      _faces = faces;
+      _groupedFaces = grouped;
       _isLoading = false;
     });
   }
 
-  Future<void> _deleteFace(String matricule) async {
+  Future<void> _deleteAgent(String matricule) async {
     final confirmed =
         await showDialog<bool>(
           context: context,
@@ -47,7 +56,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
               borderRadius: BorderRadius.circular(18),
             ),
             title: const Text(
-              "Supprimer ?",
+              "Supprimer l'agent ?",
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontFamily: 'Ubuntu',
@@ -55,7 +64,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
               ),
             ),
             content: Text(
-              "Voulez-vous supprimer l'empreinte de l'agent $matricule ?",
+              "Voulez-vous supprimer définitivement l'agent $matricule et toutes ses empreintes associées ?",
               style: const TextStyle(
                 fontFamily: 'Ubuntu',
                 color: KioskColors.textMid,
@@ -72,7 +81,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
                   backgroundColor: KioskColors.danger,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text("SUPPRIMER"),
+                child: const Text("TOUT SUPPRIMER"),
               ),
             ],
           ),
@@ -81,13 +90,14 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
 
     if (!confirmed) return;
 
+    // Suppression de TOUTES les lignes liées au matricule
     await _db.deleteFace(matricule);
     await _loadFaces();
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text("Visage supprimé avec succès"),
+        content: Text("Agent $matricule supprimé avec succès"),
         behavior: SnackBarBehavior.floating,
         backgroundColor: KioskColors.success,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -127,7 +137,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
                     size: 22 * scale,
                   ),
                   style: IconButton.styleFrom(
-                    backgroundColor: KioskColors.surface.withOpacity(0.9),
+                    backgroundColor: Colors.white.withOpacity(0.9),
                     side: BorderSide(
                       color: KioskColors.outline.withOpacity(0.85),
                     ),
@@ -139,7 +149,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
             ),
             SizedBox(height: 10 * scale),
             _AdminHeroCard(
-              facesCount: _faces.length,
+              agentsCount: _groupedFaces.length,
               onRefresh: _loadFaces,
               scale: scale,
             ),
@@ -158,7 +168,7 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
       );
     }
 
-    if (_faces.isEmpty) {
+    if (_groupedFaces.isEmpty) {
       return Center(
         child: KioskCard(
           padding: EdgeInsets.symmetric(
@@ -196,15 +206,20 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
       );
     }
 
+    final matricules = _groupedFaces.keys.toList();
+
     return ListView.separated(
-      itemCount: _faces.length,
+      itemCount: matricules.length,
       separatorBuilder: (_, __) => SizedBox(height: 10 * scale),
       itemBuilder: (context, index) {
-        final face = _faces[index];
-        return _FaceCard(
-          face: face,
+        final matricule = matricules[index];
+        final agentFaces = _groupedFaces[matricule]!;
+        return _AgentCard(
+          matricule: matricule,
+          face: agentFaces.first, // On prend la première photo comme aperçu
+          count: agentFaces.length,
           scale: scale,
-          onDelete: () => _deleteFace(face.matricule),
+          onDelete: () => _deleteAgent(matricule),
         );
       },
     );
@@ -213,12 +228,12 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
 
 class _AdminHeroCard extends StatelessWidget {
   const _AdminHeroCard({
-    required this.facesCount,
+    required this.agentsCount,
     required this.onRefresh,
     required this.scale,
   });
 
-  final int facesCount;
+  final int agentsCount;
   final VoidCallback onRefresh;
   final double scale;
 
@@ -261,11 +276,12 @@ class _AdminHeroCard extends StatelessWidget {
               ),
               const Spacer(),
               IconButton(
+                onPressed: onRefresh,
                 icon: Icon(Icons.refresh_rounded, size: 22 * scale),
                 style: IconButton.styleFrom(
                   foregroundColor: Colors.white,
                   backgroundColor: Colors.white.withOpacity(0.16),
-                ), onPressed:onRefresh,
+                ),
               ),
             ],
           ),
@@ -282,7 +298,7 @@ class _AdminHeroCard extends StatelessWidget {
           ),
           SizedBox(height: 4 * scale),
           Text(
-            "Gestion locale des empreintes faciales",
+            "Gestion locale des agents et empreintes",
             style: TextStyle(
               color: Colors.white.withOpacity(0.9),
               fontFamily: 'Ubuntu',
@@ -294,7 +310,7 @@ class _AdminHeroCard extends StatelessWidget {
           _CounterPill(
             icon: Icons.groups_rounded,
             label:
-                "$facesCount agent${facesCount > 1 ? 's' : ''} enregistré${facesCount > 1 ? 's' : ''}",
+                "$agentsCount agent${agentsCount > 1 ? 's' : ''} enregistré${agentsCount > 1 ? 's' : ''}",
             scale: scale,
           ),
         ],
@@ -348,14 +364,18 @@ class _CounterPill extends StatelessWidget {
   }
 }
 
-class _FaceCard extends StatelessWidget {
-  const _FaceCard({
+class _AgentCard extends StatelessWidget {
+  const _AgentCard({
+    required this.matricule,
     required this.face,
+    required this.count,
     required this.scale,
     required this.onDelete,
   });
 
+  final String matricule;
   final FacePicture face;
+  final int count;
   final double scale;
   final VoidCallback onDelete;
 
@@ -370,7 +390,7 @@ class _FaceCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(10 * scale),
       decoration: BoxDecoration(
-        color: KioskColors.surface.withOpacity(0.92),
+        color: Colors.white.withOpacity(0.92),
         borderRadius: BorderRadius.circular(20 * scale),
         border: Border.all(color: KioskColors.outline.withOpacity(0.72)),
         boxShadow: [
@@ -407,7 +427,7 @@ class _FaceCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  face.matricule,
+                  matricule,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -418,24 +438,38 @@ class _FaceCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: 4 * scale),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8 * scale,
-                    vertical: 4 * scale,
-                  ),
-                  decoration: BoxDecoration(
-                    color: KioskColors.primarySoftBg,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    "Empreinte biométrique",
-                    style: TextStyle(
-                      fontSize: 11 * scale,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Ubuntu',
-                      color: KioskColors.primaryDark,
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8 * scale,
+                        vertical: 4 * scale,
+                      ),
+                      decoration: BoxDecoration(
+                        color: KioskColors.primarySoftBg,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        "Agent unique",
+                        style: TextStyle(
+                          fontSize: 11 * scale,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Ubuntu',
+                          color: KioskColors.primaryDark,
+                        ),
+                      ),
                     ),
-                  ),
+                    SizedBox(width: 8 * scale),
+                    Text(
+                      "Empreintes: $count",
+                      style: TextStyle(
+                        fontSize: 11 * scale,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Ubuntu',
+                        color: KioskColors.textLow,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -443,7 +477,7 @@ class _FaceCard extends StatelessWidget {
           IconButton(
             onPressed: onDelete,
             icon: Icon(
-              Icons.delete_outline_rounded,
+              Icons.delete_forever_rounded,
               color: KioskColors.danger,
               size: 22 * scale,
             ),

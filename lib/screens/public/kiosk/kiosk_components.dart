@@ -160,9 +160,15 @@ class KioskBrandHeader extends StatelessWidget {
         : KioskColors.textLow;
 
     return GestureDetector(
-      onDoubleTap: enableAdminShortcut
-          ? () => Get.to(() => const KioskAdminFacesPage())
-          : null,
+      onDoubleTap: () async{
+        final authenticated = await Get.dialog<bool>(
+          const KioskAdminPasswordDialog(),
+          barrierDismissible: true,
+        );
+        if(authenticated!){
+          Get.to(() => const KioskAdminFacesPage());
+        }
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -497,14 +503,14 @@ class KioskOutlineButton extends StatelessWidget {
       height: (height ?? 64) * scale,
       child: OutlinedButton.icon(
         onPressed: onPressed,
-        icon: Icon(icon, size: 22 * scale),
+        icon: Icon(icon, size: 15 * scale),
         label: Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontWeight: FontWeight.w700,
-            fontSize: 15 * scale,
+            fontSize: 12 * scale,
             fontFamily: 'Ubuntu',
             letterSpacing: 0.1,
           ),
@@ -517,7 +523,7 @@ class KioskOutlineButton extends StatelessWidget {
             width: 1.4,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20 * scale),
+            borderRadius: BorderRadius.circular(12 * scale),
           ),
         ),
       ),
