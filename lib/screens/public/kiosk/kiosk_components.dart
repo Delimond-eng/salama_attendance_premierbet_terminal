@@ -499,20 +499,22 @@ class KioskOutlineButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = kioskScale(context);
     return SizedBox(
-      width: double.infinity,
       height: (height ?? 64) * scale,
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 15 * scale),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 12 * scale,
-            fontFamily: 'Ubuntu',
-            letterSpacing: 0.1,
+        label: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 12 * scale,
+              fontFamily: 'Ubuntu',
+              letterSpacing: 0.1,
+            ),
           ),
         ),
         style: OutlinedButton.styleFrom(

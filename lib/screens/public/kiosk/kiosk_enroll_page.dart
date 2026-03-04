@@ -59,7 +59,7 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
         (camera) => camera.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       ),
-      ResolutionPreset.low, // RÉSOLUTION BASSE POUR ÉVITER L'ÉTIREMENT SUR SM-A05
+      ResolutionPreset.low,
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
     );
@@ -135,26 +135,41 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
   }
 
   Future<void> _submitEnroll() async {
-    if (_matriculeController.text.trim().isEmpty) {
+    final matricule = _matriculeController.text.trim();
+    if (matricule.isEmpty) {
       EasyLoading.showInfo("Matricule requis");
       return;
     }
-    EasyLoading.show(status: 'Enregistrement biométrique...');
+    
+    EasyLoading.show(status: 'Finalisation de l\'enrôlement...');
     
     try {
+      // 1. Sauvegarde des 3 empreintes dans la base de données locale
       for (var imgFile in _capturedImages) {
         await faceRecognitionController.addKnownFaceFromImage(
-          _matriculeController.text.trim(),
+          matricule,
           imgFile,
         );
       }
       
-      await HttpManager().enrollAgent(_matriculeController.text.trim());
-      EasyLoading.showSuccess("Agent enrôlé avec succès");
-      widget.onSuccess();
-      Get.back();
+      // 2. Préparation pour l'envoi au serveur
+      // On utilise la première photo capturée comme photo officielle pour le serveur
+      tagsController.face.value = _capturedImages.first;
+      
+      // 3. Envoi au serveur via HttpManager
+      final res = await HttpManager().enrollAgent(matricule);
+      
+      if (res == "success") {
+        EasyLoading.showSuccess("Agent enrôlé et synchronisé");
+        widget.onSuccess();
+        Get.back();
+      } else {
+        EasyLoading.showError(res.toString());
+      }
     } catch (e) {
-      EasyLoading.showError("L'enrôlement a échoué");
+      EasyLoading.showError("Échec de l'enrôlement : $e");
+    } finally {
+      EasyLoading.dismiss();
     }
   }
 
@@ -190,12 +205,12 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
                       icon: const Icon(Icons.arrow_back_ios_new_rounded),
                     ),
                     const Spacer(),
-                    const KioskBadge(label: "MODE ADMIN : ENRÔLEMENT"),
+                    const KioskBadge(label: "ADMIN : ENRÔLEMENT"),
                   ],
                 ),
                 SizedBox(height: 20 * scale),
                 Text(
-                  _allPhotosTaken ? "Capture terminée" : (_facePresent ? "Prêt pour capture" : "Positionnez le visage"),
+                  _allPhotosTaken ? "Prêt à valider" : (_facePresent ? "Visage détecté : Prêt" : "Cadrez le visage"),
                   style: kioskTitle(context).copyWith(fontSize: 22 * scale, color: _facePresent ? KioskColors.success : KioskColors.textHigh),
                 ),
                 SizedBox(height: 24 * scale),
@@ -246,7 +261,7 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
                             borderRadius: BorderRadius.circular(10),
                             child: Image.file(File(_capturedImages[index].path), fit: BoxFit.cover),
                           )
-                        : Icon(Icons.camera_alt_rounded, color: KioskColors.textLow.withOpacity(0.3)),
+                        : Icon(Icons.face_rounded, color: KioskColors.textLow.withOpacity(0.3)),
                     );
                   }),
                 ),
@@ -258,13 +273,12 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
                     onPressed: (_isCapturing || !_facePresent) ? null : _takeManualPhoto,
                     icon: _isCapturing 
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.camera_rounded),
-                    label: Text("CAPTURER PHOTO ${_capturedImages.length + 1}/3"),
+                      : const Icon(Icons.camera_alt_rounded),
+                    label: Text("CAPTURER ${_capturedImages.length + 1}/3"),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: KioskColors.primary,
                       foregroundColor: Colors.white,
                       disabledBackgroundColor: KioskColors.outline.withOpacity(0.5),
-                      disabledForegroundColor: KioskColors.textLow,
                       minimumSize: Size(220 * scale, 60 * scale),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
@@ -276,9 +290,10 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
                       children: [
                         TextField(
                           controller: _matriculeController,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Ubuntu'),
                           decoration: const InputDecoration(
                             labelText: "Matricule de l'agent",
+                            hintText: "Ex: AGT-0012",
                             prefixIcon: Icon(Icons.badge_rounded),
                             border: OutlineInputBorder(),
                           ),
@@ -292,7 +307,7 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
                             minimumSize: const Size(double.infinity, 56),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: const Text("VALIDER L'ENRÔLEMENT", style: TextStyle(fontWeight: FontWeight.bold)),
+                          child: const Text("VALIDER L'ENRÔLEMENT", style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Ubuntu')),
                         ),
                       ],
                     ),

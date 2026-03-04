@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -62,100 +63,166 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark, 
-        statusBarBrightness: Brightness.light,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
       ),
-      child: KioskScaffold(
-        padding: EdgeInsets.zero,
-        topSafeArea: false,
-        child: Obx(() {
-          final station = tagsController.activeStation.value;
-          final stationName = (station?['name'] ?? 'Station principale').toString();
-          final topInset = MediaQuery.paddingOf(context).top;
-    
-          return CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                automaticallyImplyLeading: false,
-                pinned: true,
-                stretch: true,
-                expandedHeight: topInset + 248 * scale,
-                collapsedHeight: topInset + 56 * scale,
-                toolbarHeight: 56 * scale,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                backgroundColor: KioskColors.primaryDark,
-                flexibleSpace: FlexibleSpaceBar(
-                  collapseMode: CollapseMode.parallax,
-                  background: _StationHeroSliverHeader(
-                    scale: scale,
-                    stationName: stationName,
-                    topInset: topInset,
-                  ),
-                ),
-              ),
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(24 * scale, 20 * scale, 24 * scale, 12 * scale),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Spacer(),
-                      _PointerButton(
-                        scale: scale,
-                        onTap: () => widget.onCheckAction('pointage'),
-                      ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: KioskOutlineButton(
-                              label: "ENROLLER",
-                              icon: Icons.face_retouching_natural_rounded,
-                              height: 40,
-                              onPressed: widget.onEnrollAction,
-                            ),
-                          ),
-                          // Le bouton de désactivation/activation du mode Kiosque
-                          // Visible pour quitter (désactiver) uniquement si actif, 
-                          // ou visible pour activer si inactif.
-                          if(_isKioskEnabled)...[
-                            SizedBox(width: 12 * scale),
-                            Expanded(
-                              child: KioskOutlineButton(
-                                label: _isKioskEnabled ? "QUITTER ADMIN" : "ACTIVER MDM",
-                                icon: _isKioskEnabled ? CupertinoIcons.checkmark_shield : CupertinoIcons.lock_shield,
-                                height: 40,
-                                onPressed: _handleMdmToggle,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. BACKGROUND IMAGE
+            Image.asset(
+              'assets/images/attendance.jpg',
+              fit: BoxFit.cover,
+            ),
+
+            // 2. PRIMARY COLOR OVERLAY
+            Container(
+              color: KioskColors.primary.withOpacity(0.75),
+            ),
+
+            // 3. CONTENT
+            SafeArea(
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  const KioskBrandHeader(blueMode: true),
+                  const SizedBox(height: 20),
+                  
+                  // 4. GLASS CONTAINER
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 10 * scale),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(32 * scale),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                          child: Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(20 * scale),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(32 * scale),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.15),
+                                width: 1.5,
                               ),
                             ),
-                          ]
-                        ],
-                      ),
-                      SizedBox(height: 14 * scale),
-                      Center(
-                        child: KioskGhostButton(
-                          label: 'Retour au scan station',
-                          icon: Icons.arrow_back_ios_new_rounded,
-                          onPressed: widget.onBack,
+                            child: Obx(() {
+                              final station = tagsController.activeStation.value;
+                              final stationName = (station?['name'] ?? 'Station principale').toString();
+
+                              return Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(height: 32),
+                                  // STATION NAME WITH LOCATION ICON (TOP OF GLASS)
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.location_on_outlined, color: Colors.white.withOpacity(0.8), size: 22 * scale),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          stationName.toUpperCase(),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 22 * scale,
+                                            fontFamily: 'Ubuntu',
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height:20.0),
+                                  // 6. TERMINAL STATUS PILL
+                                  _WhitePill(
+                                    scale: scale,
+                                    icon: Icons.verified_rounded,
+                                    label: 'Terminal de pointage',
+                                  ),
+
+                                  
+                                  const Spacer(),
+
+                                  // 5. CIRCULAR POINTER BUTTON (CENTER)
+                                  _CircularPointerButton(
+                                    scale: scale,
+                                    onTap: () => widget.onCheckAction('pointage'),
+                                  ),
+
+                                  const Spacer(),
+                                  
+
+
+                                  // 7. ADMIN BUTTONS (Minimal Size & Centered)
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      _SmallGlassButton(
+                                        label: "ENROLLER",
+                                        icon: Icons.face_retouching_natural_rounded,
+                                        onPressed: widget.onEnrollAction,
+                                        scale: scale,
+                                      ),
+                                      if(_isKioskEnabled)...[
+                                        const SizedBox(width: 12),
+                                        _SmallGlassButton(
+                                          label: _isKioskEnabled ? "QUITTER" : "MDM",
+                                          icon: _isKioskEnabled ? CupertinoIcons.lock_open_fill : CupertinoIcons.lock_fill,
+                                          onPressed: _handleMdmToggle,
+                                          scale: scale,
+                                        ),
+                                      ]
+                                    ],
+                                  ),
+                                  const SizedBox(height: 24),
+                                ],
+                              );
+                            }),
+                          ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  
+                  // 8. CORRECTION BOUTON RETOUR
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12 * scale),
+                    child: Center(
+                      child: TextButton.icon(
+                        onPressed: widget.onBack,
+                        icon: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white.withOpacity(0.7), size: 18 * scale),
+                        label: Text(
+                          'Retour au scan station',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Ubuntu',
+                            fontSize: 13 * scale,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
               ),
-            ],
-          );
-        }),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _PointerButton extends StatelessWidget {
-  const _PointerButton({required this.scale, required this.onTap});
-
+class _CircularPointerButton extends StatelessWidget {
+  const _CircularPointerButton({required this.scale, required this.onTap});
   final double scale;
   final VoidCallback onTap;
 
@@ -163,132 +230,109 @@ class _PointerButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.all(22 * scale),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.orange, Colors.deepOrange], // Orange vif
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // GLOW EFFECT
+          Container(
+            width: 190 * scale,
+            height: 190 * scale,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withOpacity(0.4),
+                  blurRadius: 40 * scale,
+                  spreadRadius: 5 * scale,
+                ),
+                BoxShadow(
+                  color: Colors.deepOrange.withOpacity(0.2),
+                  blurRadius: 60 * scale,
+                  spreadRadius: 10 * scale,
+                ),
+              ],
+            ),
           ),
-          borderRadius: BorderRadius.circular(28 * scale),
-          boxShadow: [
-            // Effet Avatar Glow
-            BoxShadow(
-              color: Colors.orange.withOpacity(0.4),
-              blurRadius: 25,
-              spreadRadius: 2,
-              offset: const Offset(0, 10),
-            ),
-            BoxShadow(
-              color: Colors.orange.withOpacity(0.2),
-              blurRadius: 45,
-              spreadRadius: 8,
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 86 * scale,
-              height: 86 * scale,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(22 * scale),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.26),
-                  width: 1.2,
-                ),
+          // MAIN BUTTON
+          Container(
+            width: 180 * scale,
+            height: 180 * scale,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.orange, Colors.deepOrange],
               ),
-              child: Center(
-                child: Icon(
-                  Icons.face_retouching_natural_rounded,
-                  size: 42 * scale,
-                  color: Colors.white,
-                ),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.4), width: 2),
             ),
-            SizedBox(width: 18 * scale),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "POINTER",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24 * scale,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Ubuntu',
-                    ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.face_retouching_natural_rounded, size: 50 * scale, color: Colors.white),
+                const SizedBox(height: 8),
+                Text(
+                  "POINTER",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16 * scale,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Ubuntu',
+                    letterSpacing: 1.5,
                   ),
-                  SizedBox(height: 4 * scale),
-                  Text(
-                    "Identifiez-vous pour valider votre présence.",
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 12 * scale,
-                      fontFamily: 'Ubuntu',
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 28),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _StationHeroSliverHeader extends StatelessWidget {
-  const _StationHeroSliverHeader({
+class _SmallGlassButton extends StatelessWidget {
+  const _SmallGlassButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
     required this.scale,
-    required this.stationName,
-    required this.topInset,
   });
-
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
   final double scale;
-  final String stationName;
-  final double topInset;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [KioskColors.primary, KioskColors.accent],
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(24 * scale, topInset + (10 * scale), 24 * scale, 24 * scale),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const KioskBrandHeader(blueMode: true),
-            const Spacer(),
-            Text(
-              'STATION ${stationName.toUpperCase()}',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 24 * scale,
-                fontFamily: 'Ubuntu',
-              ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14 * scale),
+      child: Material(
+        color: Colors.white.withOpacity(0.12),
+        child: InkWell(
+          onTap: onPressed,
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 12 * scale),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.2),
+              borderRadius: BorderRadius.circular(14 * scale),
             ),
-            const Spacer(),
-            _WhitePill(
-              scale: scale,
-              icon: Icons.verified_rounded,
-              label: 'Mode Terminal Actif',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18 * scale, color: Colors.white),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13 * scale,
+                    fontFamily: 'Ubuntu',
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -310,28 +354,26 @@ class _WhitePill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: 12 * scale,
+        horizontal: 14 * scale,
         vertical: 8 * scale,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: Colors.white, size: 16 * scale),
-          SizedBox(width: 8 * scale),
-          Flexible(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'Ubuntu',
-                fontSize: 12 * scale,
-              ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Ubuntu',
+              fontSize: 12 * scale,
             ),
           ),
         ],
