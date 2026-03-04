@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
@@ -19,11 +20,13 @@ public class MainActivity extends FlutterActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1001;
     private MdmKioskManager kioskManager;
     private MethodChannel.Result pendingResult;
+    private LocationManager locationManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         kioskManager = new MdmKioskManager(this);
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
     }
 
     @Override
@@ -44,7 +47,7 @@ public class MainActivity extends FlutterActivity {
                             break;
                         case "getTerminalLocation":
                             this.pendingResult = result;
-                            getLocation();
+                            requestLocationUpdate();
                             break;
                         default:
                             result.notImplemented();
@@ -52,49 +55,44 @@ public class MainActivity extends FlutterActivity {
                 });
     }
 
-    private void getLocation() {
-        // 1. Vérification et Demande d'autorisation si nécessaire
+    private void requestLocationUpdate() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, 
-                new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 
+                new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 
                 LOCATION_PERMISSION_REQUEST_CODE);
             return;
         }
 
-        // 2. Si déjà autorisé, on récupère la position
-        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        Location lastKnownLocation = null;
+        // Pour un terminal mobile, on demande une mise à jour fraîche (pas le cache)
+        String provider = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) 
+            ? LocationManager.GPS_PROVIDER 
+            : LocationManager.NETWORK_PROVIDER;
 
-        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-        }
-        
-        if (lastKnownLocation == null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-            lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-        }
-
-        if (pendingResult != null) {
-            if (lastKnownLocation != null) {
-                Map<String, Double> coordinates = new HashMap<>();
-                coordinates.put("latitude", lastKnownLocation.getLatitude());
-                coordinates.put("longitude", lastKnownLocation.getLongitude());
-                pendingResult.success(coordinates);
-            } else {
-                pendingResult.error("UNAVAILABLE", "Localisation introuvable (Activez le GPS)", null);
+        locationManager.requestSingleUpdate(provider, new LocationListener() {
+            @Override
+            public void onLocationChanged(@NonNull Location location) {
+                if (pendingResult != null) {
+                    Map<String, Double> coordinates = new HashMap<>();
+                    coordinates.put("latitude", location.getLatitude());
+                    coordinates.put("longitude", location.getLongitude());
+                    pendingResult.success(coordinates);
+                    pendingResult = null;
+                }
             }
-            pendingResult = null;
-        }
+            @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
+            @Override public void onProviderEnabled(@NonNull String provider) {}
+            @Override public void onProviderDisabled(@NonNull String provider) {}
+        }, null);
     }
 
-    // 3. Gestion du retour de la demande d'autorisation
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                getLocation(); // On retente la récupération puisque c'est autorisé
+                requestLocationUpdate();
             } else if (pendingResult != null) {
-                pendingResult.error("PERMISSION_DENIED", "L'utilisateur a refusé l'autorisation", null);
+                pendingResult.error("PERMISSION_DENIED", "Permission refusée", null);
                 pendingResult = null;
             }
         }
