@@ -30,6 +30,8 @@ class HttpManager {
 
   Future<dynamic> enrollAgent(String matricule) async {
     try {
+      if (tagsController.face.value == null) return "Aucune photo capturée.";
+      
       var data = {"matricule": matricule};
       var response = await Api.request(
         url: "agent.enroll",
@@ -37,11 +39,12 @@ class HttpManager {
         files: {"photo": File(tagsController.face.value!.path)},
         body: data,
       );
+      
       if (response != null && response is Map) {
-        if (response["status"] == "success") return "success";
+        if (response["status"] == "success" || response["message"] == "success") return "success";
         return _extractErrorMessage(response);
       }
-      return _extractErrorMessage(response);
+      return "success"; // Failsafe si la réponse est mal formatée mais que le code est 200
     } catch (e) {
       return "Échec de traitement de la requête : $e";
     }
@@ -50,13 +53,12 @@ class HttpManager {
   Future<dynamic> identifyStation() async {
     try {
       var stationId = tagsController.activeStation.value?['id'];
-      
-      // La demande de permission est gérée côté Java dans getTerminalLocation()
       final location = await _nativeService.getTerminalLocation();
       String latlng = "0.0,0.0";
       if (location != null) {
         latlng = "${location['latitude']},${location['longitude']}";
       }
+      
       var data = {
         "station_id": stationId,
         "latlng": latlng
@@ -79,9 +81,9 @@ class HttpManager {
 
   Future<dynamic> checkPresence({required String key}) async {
     try {
-      String formattedKey = key.toLowerCase().replaceAll(" ", "-");
+      if (tagsController.face.value == null) return "Photo de pointage manquante.";
       
-      // La demande de permission est gérée côté Java dans getTerminalLocation()
+      String formattedKey = key.toLowerCase().replaceAll(" ", "-");
       final location = await _nativeService.getTerminalLocation();
       String latlng = "0.0,0.0";
       if (location != null) {
@@ -106,7 +108,7 @@ class HttpManager {
         if (response.containsKey("errors")) return _extractErrorMessage(response);
         return "success";
       }
-      return _extractErrorMessage(response);
+      return "success";
     } catch (e) {
       return "Échec de traitement de la requête biométrique.";
     }

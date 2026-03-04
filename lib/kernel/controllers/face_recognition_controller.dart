@@ -52,8 +52,6 @@ class FaceRecognitionController extends GetxController {
 
   Interpreter? _interpreter;
   final isModelLoaded = false.obs;
-  
-  // Correction: On stocke une liste de tous les templates pour supporter l'enrôlement multiple
   final List<FacePicture> _storedTemplates = [];
 
   @override
@@ -99,6 +97,10 @@ class FaceRecognitionController extends GetxController {
     if (faces.isEmpty) return null;
 
     final faceBox = faces.first.boundingBox;
+    
+    // FILTRAGE DE QUALITÉ : On refuse les visages trop petits/loins pour éviter les erreurs
+    if (faceBox.width < 80 || faceBox.height < 80) return null;
+
     final bytes = await imageFile.readAsBytes();
 
     final input = await compute(processImage, {
@@ -115,7 +117,6 @@ class FaceRecognitionController extends GetxController {
     _interpreter!.run(input, output);
 
     final List<double> result = List<double>.from(output[0]);
-    // Normalization
     double sum = 0;
     for (var v in result) sum += v * v;
     double norm = sqrt(sum);
@@ -128,9 +129,8 @@ class FaceRecognitionController extends GetxController {
     if (embedding == null) return 'Inconnu';
 
     String? closestMatricule;
-    double minDistance = 10.0;
+    double minDistance = double.infinity;
 
-    // On boucle sur TOUS les templates (permet de matcher n'importe laquelle des 3 photos d'enrôlement)
     for (final template in _storedTemplates) {
       final distance = euclideanDistance(template.embedding, embedding);
       if (distance < minDistance) {
@@ -139,9 +139,15 @@ class FaceRecognitionController extends GetxController {
       }
     }
 
-    if (closestMatricule != null && minDistance < 0.75) {
+    // RÉGLAGE DE PRÉCISION : Seuil abaissé à 0.60 (plus strict)
+    // Entre 0.0 et 0.60 : Match solide.
+    // Au dessus de 0.60 : Trop incertain, on rejette.
+    if (closestMatricule != null && minDistance < 0.60) {
+      debugPrint("MATCH SUCCESS: $closestMatricule (Distance: $minDistance)");
       return closestMatricule;
     }
+    
+    debugPrint("MATCH FAILED: Best was $closestMatricule with distance $minDistance");
     return 'Inconnu';
   }
 
