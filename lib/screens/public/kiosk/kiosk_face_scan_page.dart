@@ -23,9 +23,9 @@ class KioskFaceScanPage extends StatefulWidget {
 
 class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   CameraController? _controller;
-  Future<void>? _initializeControllerFuture;
   XFile? _capturedImage;
   String? _detectedMatricule;
+  String? _detectedName;
   bool _isBusy = false;
   bool _isSuccess = false;
   bool _hasBlinked = false;
@@ -96,10 +96,11 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           final file = await _controller!.takePicture();
           final res = await faceRecognitionController.recognizeFaceFromImage(file);
           
-          if (res != null && res != 'Inconnu') {
+          if (res != null && res is Map && res['matricule'] != 'Inconnu') {
             if (mounted) {
               setState(() { 
-                _detectedMatricule = res; 
+                _detectedMatricule = res['matricule']?.toString();
+                _detectedName = res['name']?.toString();
                 _capturedImage = file; 
                 _isSuccess = true; 
               });
@@ -138,6 +139,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   }
 
   Future<void> _submit(String type) async {
+    if (_detectedMatricule == null) return;
     EasyLoading.show(status: 'Pointage...');
     tagsController.attendanceType.value = type;
     tagsController.faceResult.value = _detectedMatricule!;
@@ -155,6 +157,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       _isSuccess = false;
       _capturedImage = null;
       _detectedMatricule = null;
+      _detectedName = null;
       _hasBlinked = false;
       _hint = "Positionnez votre visage";
     });
@@ -203,7 +206,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                   if (!_isSuccess) _buildLoader(scale),
                   if (_isSuccess) ...[
                     Text(
-                      "Sélectionnez votre action de pointage :",
+                      "Sélectionnez votre action :",
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: KioskColors.textMid,
@@ -214,7 +217,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                     ),
                     SizedBox(height: 12 * scale),
                     Flexible(
-                      flex: 8,
+                      flex: 10,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: _buildActionGrid(context, scale),
@@ -247,20 +250,38 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: KioskColors.success.withOpacity(0.2)),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.face_retouching_natural_rounded, color: KioskColors.success, size: 22 * scale),
-          SizedBox(width: 10 * scale),
-          Text(
-            _detectedMatricule!,
-            style: TextStyle(
-              fontFamily: 'Ubuntu',
-              fontSize: 18 * scale,
-              fontWeight: FontWeight.w800,
-              color: KioskColors.success
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.face_retouching_natural_rounded, color: KioskColors.success, size: 22 * scale),
+              SizedBox(width: 10 * scale),
+              Text(
+                _detectedMatricule ?? "Agent",
+                style: TextStyle(
+                  fontFamily: 'Ubuntu',
+                  fontSize: 18 * scale,
+                  fontWeight: FontWeight.w800,
+                  color: KioskColors.success
+                ),
+              ),
+            ],
           ),
+          if (_detectedName != null) ...[
+            SizedBox(height: 4 * scale),
+            Text(
+              _detectedName!.toUpperCase(),
+              style: TextStyle(
+                fontFamily: 'Ubuntu',
+                fontSize: 14 * scale,
+                fontWeight: FontWeight.w600,
+                color: KioskColors.textMid,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -418,7 +439,7 @@ class _ReferenceButton extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.start, // ALIGNEMENT START
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Container(
                     padding: const EdgeInsets.all(6),
@@ -432,7 +453,7 @@ class _ReferenceButton extends StatelessWidget {
                     ),
                     child: Icon(icon, color: Colors.white, size: 18 * scale),
                   ),
-                  SizedBox(width: 15 * scale), // ESPACEMENT FIXE
+                  SizedBox(width: 15 * scale),
                   Flexible(
                     child: Text(
                       label, 

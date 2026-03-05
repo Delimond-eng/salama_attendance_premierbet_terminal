@@ -11,27 +11,32 @@ class DatabaseHelper {
 
   Future<void> init() async {
     if (_db != null) return;
-    final path = join(await getDatabasesPath(), 'faces_v2.db'); // Nouvelle version pour multi-templates
+    final path = join(await getDatabasesPath(), 'faces_v2.db');
     _db = await openDatabase(
       path,
-      version: 1,
+      version: 2, // Version incrémentée
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             matricule TEXT,
+            name TEXT,
             embedding TEXT,
             image_path TEXT
           )
         ''');
         await db.execute('CREATE INDEX idx_matricule ON faces (matricule)');
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE faces ADD COLUMN name TEXT');
+        }
+      },
     );
   }
 
   Future<void> insertFace(FacePicture face) async {
     await init();
-    // On insère sans écraser pour garder les multi-templates
     await _db!.insert(
       'faces',
       face.toMap(),

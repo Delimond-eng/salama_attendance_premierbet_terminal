@@ -113,9 +113,6 @@ class _KioskAdminFacesPageState extends State<KioskAdminFacesPage> {
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: Colors.white,
-        systemNavigationBarIconBrightness: Brightness.dark,
       ),
       child: KioskScaffold(
         padding: EdgeInsets.fromLTRB(

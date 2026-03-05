@@ -64,7 +64,6 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
       ),
       child: Scaffold(
         backgroundColor: Colors.black,

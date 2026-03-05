@@ -41,12 +41,16 @@ class HttpManager {
       );
       
       if (response != null && response is Map) {
-        if (response["status"] == "success" || response["message"] == "success") return "success";
-        return _extractErrorMessage(response);
+        if (response.containsKey("errors")) {
+          String msg = _extractErrorMessage(response);
+          EasyLoading.showError(msg);
+          return null;
+        }
+        return response;
       }
-      return "success"; // Failsafe si la réponse est mal formatée mais que le code est 200
+      return {"status": "error", "message": "Réponse invalide"};
     } catch (e) {
-      return "Échec de traitement de la requête : $e";
+      return {"status": "error", "message": e.toString()};
     }
   }
 
@@ -70,7 +74,11 @@ class HttpManager {
         body: data,
       );
       if (response != null && response is Map) {
-        if (response.containsKey("errors")) return _extractErrorMessage(response);
+        if (response.containsKey("errors")) {
+          String msg = _extractErrorMessage(response);
+          EasyLoading.showError(msg);
+          return msg;
+        }
         return "success";
       }
       return _extractErrorMessage(response);
@@ -105,7 +113,11 @@ class HttpManager {
       );
 
       if (response != null && response is Map) {
-        if (response.containsKey("errors")) return _extractErrorMessage(response);
+        if (response.containsKey("errors")) {
+          String msg = _extractErrorMessage(response);
+          EasyLoading.showError(msg);
+          return msg;
+        }
         return "success";
       }
       return "success";

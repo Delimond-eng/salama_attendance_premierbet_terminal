@@ -141,33 +141,32 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
       return;
     }
     
-    EasyLoading.show(status: 'Finalisation de l\'enrôlement...');
+    EasyLoading.show(status: 'Synchronisation avec le serveur...');
     
     try {
-      // 1. Sauvegarde des 3 empreintes dans la base de données locale
-      for (var imgFile in _capturedImages) {
-        await faceRecognitionController.addKnownFaceFromImage(
-          matricule,
-          imgFile,
-        );
-      }
-      
-      // 2. Préparation pour l'envoi au serveur
-      // On utilise la première photo capturée comme photo officielle pour le serveur
       tagsController.face.value = _capturedImages.first;
+      final response = await HttpManager().enrollAgent(matricule);
       
-      // 3. Envoi au serveur via HttpManager
-      final res = await HttpManager().enrollAgent(matricule);
-      
-      if (res == "success") {
-        EasyLoading.showSuccess("Agent enrôlé et synchronisé");
+      if (response != null && response is Map && response["status"] == "success") {
+        final agentData = response["result"] as Map?;
+        final String? agentName = agentData != null ? agentData["fullname"] : null;
+
+        for (var imgFile in _capturedImages) {
+          await faceRecognitionController.addKnownFaceFromImage(
+            matricule,
+            agentName,
+            imgFile,
+          );
+        }
+
+        EasyLoading.showSuccess("Agent ${agentName ?? matricule} enrôlé");
         widget.onSuccess();
         Get.back();
       } else {
-        EasyLoading.showError(res.toString());
+        EasyLoading.showError(response != null ? response["message"].toString() : "Erreur serveur");
       }
     } catch (e) {
-      EasyLoading.showError("Échec de l'enrôlement : $e");
+      EasyLoading.showError("Échec : $e");
     } finally {
       EasyLoading.dismiss();
     }
@@ -274,7 +273,7 @@ class _KioskEnrollPageState extends State<KioskEnrollPage> {
                     icon: _isCapturing 
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.camera_alt_rounded),
-                    label: Text("CAPTURER ${_capturedImages.length + 1}/3"),
+                    label: Text("CAPTURER PHOTO ${_capturedImages.length + 1}/3"),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: KioskColors.primary,
                       foregroundColor: Colors.white,

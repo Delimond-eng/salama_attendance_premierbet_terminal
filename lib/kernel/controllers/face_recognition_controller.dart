@@ -77,11 +77,11 @@ class FaceRecognitionController extends GetxController {
     _storedTemplates.addAll(faces);
   }
 
-  Future<void> addKnownFaceFromImage(String matricule, XFile image) async {
+  Future<void> addKnownFaceFromImage(String matricule, String? name, XFile image) async {
     final embedding = await getEmbedding(image);
     if (embedding == null) return;
 
-    final face = FacePicture(matricule: matricule, embedding: embedding);
+    final face = FacePicture(matricule: matricule, name: name, embedding: embedding);
     await DatabaseHelper().insertFace(face);
     _storedTemplates.add(face);
   }
@@ -98,7 +98,6 @@ class FaceRecognitionController extends GetxController {
 
     final faceBox = faces.first.boundingBox;
     
-    // FILTRAGE DE QUALITÉ : On refuse les visages trop petits/loins pour éviter les erreurs
     if (faceBox.width < 80 || faceBox.height < 80) return null;
 
     final bytes = await imageFile.readAsBytes();
@@ -123,32 +122,31 @@ class FaceRecognitionController extends GetxController {
     return result.map((e) => e / norm).toList();
   }
 
-  Future<String?> recognizeFaceFromImage(XFile? image) async {
+  Future<Map<String, dynamic>?> recognizeFaceFromImage(XFile? image) async {
     if (image == null) return null;
     final embedding = await getEmbedding(image);
-    if (embedding == null) return 'Inconnu';
+    if (embedding == null) return null;
 
-    String? closestMatricule;
+    FacePicture? closestTemplate;
     double minDistance = double.infinity;
 
     for (final template in _storedTemplates) {
       final distance = euclideanDistance(template.embedding, embedding);
       if (distance < minDistance) {
         minDistance = distance;
-        closestMatricule = template.matricule;
+        closestTemplate = template;
       }
     }
 
-    // RÉGLAGE DE PRÉCISION : Seuil abaissé à 0.60 (plus strict)
-    // Entre 0.0 et 0.60 : Match solide.
-    // Au dessus de 0.60 : Trop incertain, on rejette.
-    if (closestMatricule != null && minDistance < 0.60) {
-      debugPrint("MATCH SUCCESS: $closestMatricule (Distance: $minDistance)");
-      return closestMatricule;
+    if (closestTemplate != null && minDistance < 0.50) {
+      debugPrint("MATCH SUCCESS: ${closestTemplate.matricule} (Distance: $minDistance)");
+      return {
+        'matricule': closestTemplate.matricule,
+        'name': closestTemplate.name ?? 'Inconnu'
+      };
     }
     
-    debugPrint("MATCH FAILED: Best was $closestMatricule with distance $minDistance");
-    return 'Inconnu';
+    return null;
   }
 
   double euclideanDistance(List<double> e1, List<double> e2) {
