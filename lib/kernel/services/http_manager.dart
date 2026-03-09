@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '/global/controllers.dart';
 import '/kernel/services/api.dart';
@@ -26,6 +27,30 @@ class HttpManager {
       if (response.containsKey("message")) return response["message"].toString();
     }
     return "Une erreur inconnue est survenue.";
+  }
+
+  Future<String> _getLatlng() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return "0.0,0.0";
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return "0.0,0.0";
+      }
+      
+      if (permission == LocationPermission.deniedForever) return "0.0,0.0";
+
+      // On ajoute un timeout de 5s pour ne pas bloquer l'UI
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 5)
+      );
+      return "${position.latitude},${position.longitude}";
+    } catch (e) {
+      return "0.0,0.0";
+    }
   }
 
   Future<dynamic> enrollAgent(String matricule) async {
@@ -54,15 +79,16 @@ class HttpManager {
     }
   }
 
-  Future<dynamic> identifyStation() async {
+  Future<dynamic> identifyStation({bool getPosition = false}) async {
     try {
       var stationId = tagsController.activeStation.value?['id'];
-      final location = await _nativeService.getTerminalLocation();
-      String latlng = "0.0,0.0";
-      if (location != null) {
-        latlng = "${location['latitude']},${location['longitude']}";
-      }
       
+      // On ne récupère la position QUE si demandé (évite le lag au premier scan)
+      String latlng = "0.0,0.0";
+      if (getPosition) {
+        latlng = await _getLatlng();
+      }
+
       var data = {
         "station_id": stationId,
         "latlng": latlng
@@ -92,11 +118,7 @@ class HttpManager {
       if (tagsController.face.value == null) return "Photo de pointage manquante.";
       
       String formattedKey = key.toLowerCase().replaceAll(" ", "-");
-      final location = await _nativeService.getTerminalLocation();
-      String latlng = "0.0,0.0";
-      if (location != null) {
-        latlng = "${location['latitude']},${location['longitude']}";
-      }
+      final latlng = await _getLatlng();
 
       Map<String, dynamic> data = {
         "matricule": tagsController.faceResult.value,

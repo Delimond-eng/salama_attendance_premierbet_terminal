@@ -24,18 +24,18 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
   @override
   void initState() {
     super.initState();
-    // Check for saved station on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final savedStation = localStorage.read('active_station');
       if (savedStation != null) {
         tagsController.setStation(Map<String, dynamic>.from(savedStation));
-        _pageController.jumpToPage(2);
         tagsController.setPage(2);
+        _pageController.jumpToPage(2);
       }
     });
   }
 
   void _updatePage(int index) {
+    tagsController.setPage(index); // Mise à jour immédiate de l'index global
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 600),
@@ -48,8 +48,8 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark, // Black icons
-        statusBarBrightness: Brightness.light, // For iOS
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
       ),
       child: Scaffold(
         body: PageView(
@@ -59,7 +59,6 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
           children: [
             KioskStartScreen(
               onStart: () {
-                // Si une station est déjà scannée, on va directement au Shell (Page 2)
                 if (tagsController.activeStation.value != null) {
                   _updatePage(2);
                 } else {
@@ -67,53 +66,40 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
                 }
               },
             ),
-            KioskStationScanScreen(onSuccess: () => _updatePage(2)),
+            KioskStationScanScreen( 
+              onSuccess: () => _updatePage(2),
+            ),
             KioskAttendanceShellScreen(
               onCheckAction: (type) {
                 tagsController.setAttendanceType(type);
-                Get.to(
-                  () => KioskFaceScanPage(
-                    onSuccess: () => _updatePage(3),
-                    onCancel: () => Get.back(),
-                  ),
-                );
+                Get.to(() => KioskFaceScanPage(
+                  onSuccess: () => _updatePage(3),
+                  onCancel: () => Get.back(),
+                ));
               },
               onEnrollAction: () async {
                 final authenticated = await Get.dialog<bool>(
                   const KioskAdminPasswordDialog(),
                   barrierDismissible: true,
                 );
-
                 if (authenticated == true) {
                   tagsController.setAttendanceType("ENROLL");
-                  Get.to(
-                    () => KioskEnrollPage(
-                      onSuccess: () => _updatePage(3),
-                      onCancel: () => Get.back(),
-                    ),
-                  );
+                  Get.to(() => KioskEnrollPage(
+                    onSuccess: () => _updatePage(3),
+                    onCancel: () => Get.back(),
+                  ));
                 }
               },
               onBack: () {
                 tagsController.resetKiosk();
-                localStorage.remove(
-                  'active_station',
-                ); // Clear persistence on explicit back
+                localStorage.remove('active_station');
                 _updatePage(1);
               },
             ),
-            KioskSuccessScreen(
-              onDone: () {
-                // Après succès, on revient au Shell (Page 2) si la station est gardée
-                _updatePage(2);
-              },
-            ),
+            KioskSuccessScreen(onDone: () => _updatePage(2)),
             KioskFailureScreen(
               onRetry: () => Get.back(),
-              onCancel: () {
-                Get.back();
-                _updatePage(2);
-              },
+              onCancel: () { Get.back(); _updatePage(2); },
             ),
           ],
         ),

@@ -20,10 +20,11 @@ List<List<List<List<double>>>> processImage(Map<String, dynamic> args) {
   final originalImage = img.decodeImage(bytes);
   if (originalImage == null) return [];
 
-  final int safeLeft = left.clamp(0, originalImage.width - 1).toInt();
-  final int safeTop = top.clamp(0, originalImage.height - 1).toInt();
-  final int safeWidth = width.clamp(1, originalImage.width - safeLeft).toInt();
-  final int safeHeight = height.clamp(1, originalImage.height - safeTop).toInt();
+  // Robust crop with safety margins
+  final int safeLeft = (left - (width * 0.1)).clamp(0, originalImage.width - 1).toInt();
+  final int safeTop = (top - (height * 0.1)).clamp(0, originalImage.height - 1).toInt();
+  final int safeWidth = (width * 1.2).clamp(1, originalImage.width - safeLeft).toInt();
+  final int safeHeight = (height * 1.2).clamp(1, originalImage.height - safeTop).toInt();
 
   final cropped = img.copyCrop(originalImage, safeLeft, safeTop, safeWidth, safeHeight);
   final resized = img.copyResizeCropSquare(cropped, 112);
@@ -36,10 +37,11 @@ List<List<List<List<double>>>> processImage(Map<String, dynamic> args) {
         112,
         (x) {
           final pixel = resized.getPixel(x, y);
+          // Standard FaceNet normalization: (x - 127.5) / 128.0
           return [
-            (img.getRed(pixel) - 127.5) / 127.5,
-            (img.getGreen(pixel) - 127.5) / 127.5,
-            (img.getBlue(pixel) - 127.5) / 127.5,
+            (img.getRed(pixel) - 127.5) / 128.0,
+            (img.getGreen(pixel) - 127.5) / 128.0,
+            (img.getBlue(pixel) - 127.5) / 128.0,
           ];
         },
       ),
@@ -97,9 +99,6 @@ class FaceRecognitionController extends GetxController {
     if (faces.isEmpty) return null;
 
     final faceBox = faces.first.boundingBox;
-    
-    if (faceBox.width < 80 || faceBox.height < 80) return null;
-
     final bytes = await imageFile.readAsBytes();
 
     final input = await compute(processImage, {
@@ -116,10 +115,11 @@ class FaceRecognitionController extends GetxController {
     _interpreter!.run(input, output);
 
     final List<double> result = List<double>.from(output[0]);
+    // Embedding Normalization
     double sum = 0;
     for (var v in result) sum += v * v;
     double norm = sqrt(sum);
-    return result.map((e) => e / norm).toList();
+    return result.map((e) => e / (norm > 0 ? norm : 1.0)).toList();
   }
 
   Future<Map<String, dynamic>?> recognizeFaceFromImage(XFile? image) async {
@@ -138,14 +138,16 @@ class FaceRecognitionController extends GetxController {
       }
     }
 
-    if (closestTemplate != null && minDistance < 0.50) {
-      debugPrint("MATCH SUCCESS: ${closestTemplate.matricule} (Distance: $minDistance)");
+    // ROBUST THRESHOLD: 0.65 is the sweet spot for Facenet on mobile
+    if (closestTemplate != null && minDistance < 0.65) {
+      debugPrint("MATCH SUCCESS: ${closestTemplate.matricule} (Dist: $minDistance)");
       return {
         'matricule': closestTemplate.matricule,
         'name': closestTemplate.name ?? 'Inconnu'
       };
     }
     
+    debugPrint("NO MATCH: Best was ${closestTemplate?.matricule} (Dist: $minDistance)");
     return null;
   }
 
