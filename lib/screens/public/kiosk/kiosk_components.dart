@@ -728,7 +728,7 @@ class _KioskAdminPasswordDialogState extends State<KioskAdminPasswordDialog> {
   String? _error;
 
   void _validate() {
-    if (_controller.text == '2026') {
+    if (_controller.text == '20122026') {
       Get.back(result: true);
     } else {
       setState(() {
@@ -791,10 +791,10 @@ class _KioskAdminPasswordDialogState extends State<KioskAdminPasswordDialog> {
               keyboardType: TextInputType.number,
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
-                letterSpacing: 4,
+                letterSpacing: 8,
               ),
               decoration: InputDecoration(
-                hintText: "••••",
+                hintText: "••••••••",
                 hintStyle: TextStyle(
                   color: KioskColors.textLow.withValues(alpha: 0.5),
                   letterSpacing: 4,
