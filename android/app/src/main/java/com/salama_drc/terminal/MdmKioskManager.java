@@ -10,6 +10,8 @@ import android.content.SharedPreferences;
 import android.os.Build;
 import android.view.View;
 import android.util.Log;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 
 public class MdmKioskManager {
     private static final String PREFS_NAME = "mdm_prefs";
@@ -41,23 +43,19 @@ public class MdmKioskManager {
     }
 
     public boolean enableKiosk(Activity activity) {
-        if (!isDeviceOwner()) {
-            Log.e(TAG, "Not Device Owner. Cannot enable Kiosk.");
-            return false;
-        }
+        if (!isDeviceOwner()) return false;
 
         try {
-            // 1. Whitelist for Lock Task
             dpm.setLockTaskPackages(adminName, new String[]{context.getPackageName()});
             
-            // 2. Set as Default Launcher (IMPORTANT for Boot auto-launch)
-            IntentFilter intentFilter = new IntentFilter(Intent.ACTION_MAIN);
-            intentFilter.addCategory(Intent.CATEGORY_HOME);
-            intentFilter.addCategory(Intent.CATEGORY_DEFAULT);
-            dpm.addPersistentPreferredActivity(adminName, intentFilter, new ComponentName(context.getPackageName(), MainActivity.class.getName()));
+            IntentFilter filter = new IntentFilter(Intent.ACTION_MAIN);
+            filter.addCategory(Intent.CATEGORY_HOME);
+            filter.addCategory(Intent.CATEGORY_DEFAULT);
+            dpm.clearPackagePersistentPreferredActivities(adminName, context.getPackageName());
+            dpm.addPersistentPreferredActivity(adminName, filter, new ComponentName(context.getPackageName(), MainActivity.class.getName()));
 
-            // 3. Android 11+ security features
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // Bloque Home, Recents et la barre de Status au niveau matériel
                 dpm.setLockTaskFeatures(adminName, DevicePolicyManager.LOCK_TASK_FEATURE_NONE);
             }
 
@@ -70,19 +68,16 @@ public class MdmKioskManager {
             activity.startLockTask();
             setupImmersiveMode(activity);
             
-            Log.d(TAG, "Kiosk mode ENABLED and set as HOME");
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to enable kiosk: " + e.getMessage());
+            Log.e(TAG, "Error: " + e.getMessage());
             return false;
         }
     }
 
     public boolean disableKiosk(Activity activity) {
         try {
-            // Remove as Default Launcher
             dpm.clearPackagePersistentPreferredActivities(adminName, context.getPackageName());
-            
             activity.stopLockTask();
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -91,22 +86,35 @@ public class MdmKioskManager {
             }
             
             setKioskEnabled(false);
-            Log.d(TAG, "Kiosk mode DISABLED");
+            
+            // Restore System UI
+            View decorView = activity.getWindow().getDecorView();
+            decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to disable kiosk: " + e.getMessage());
             return false;
         }
     }
 
     public void setupImmersiveMode(Activity activity) {
-        View decorView = activity.getWindow().getDecorView();
-        decorView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+ (API 30) masquage forcé
+            final WindowInsetsController controller = activity.getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            // Anciennes versions
+            View decorView = activity.getWindow().getDecorView();
+            decorView.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN);
+        }
     }
 }
