@@ -1,9 +1,11 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:terminal/kernel/services/native_face_service.dart';
 
 import '/global/controllers.dart';
 import '/global/store.dart';
@@ -22,15 +24,50 @@ class KioskStationScanScreen extends StatefulWidget {
 
 class _KioskStationScanScreenState extends State<KioskStationScanScreen> with WidgetsBindingObserver {
   MobileScannerController controller = MobileScannerController();
+
+  final NativeFaceService _nativeService = NativeFaceService();
   bool _hasScanned = false;
   bool _isLight = false;
   bool _isPermissionGranted = false;
+  bool _isKioskEnabled = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkPermission();
+    _checkKioskStatus();
+  }
+
+
+
+  Future<void> _checkKioskStatus() async {
+    final enabled = await _nativeService.isMdmKioskEnabled();
+    if (mounted) setState(() => _isKioskEnabled = enabled);
+  }
+
+
+  Future<void> _showAdminAuth(VoidCallback onAuthenticated) async {
+    final authenticated = await Get.dialog<bool>(
+      const KioskAdminPasswordDialog(),
+      barrierDismissible: true,
+    );
+    if (authenticated == true) onAuthenticated();
+  }
+
+  Future<void> _handleMdmToggle() async {
+    _showAdminAuth(() async {
+      if (_isKioskEnabled) {
+        await _nativeService.disableMdmKiosk();
+      } else {
+        bool success = await _nativeService.enableMdmKiosk();
+        if (!success) {
+          Get.snackbar("Erreur MDM", "L'app n'est pas Device Owner.",
+              backgroundColor: Colors.red, colorText: Colors.white);
+        }
+      }
+      await _checkKioskStatus();
+    });
   }
 
   Future<void> _checkPermission() async {
@@ -188,6 +225,14 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> with Wi
                 SizedBox(width: 12 * scale),
                 ScannerControl(icon: Icons.restart_alt_rounded, onTap: _restartScan),
               ],
+              if(_isKioskEnabled)...[
+                SizedBox(width: 12 * scale),
+                ScannerControl(
+                  icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
+                  onTap: _handleMdmToggle,
+                ),
+              ]
+
             ],
           ),
           SizedBox(height: 10 * scale),

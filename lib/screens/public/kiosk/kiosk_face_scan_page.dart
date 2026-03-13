@@ -31,6 +31,10 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   bool _hasBlinked = false;
   bool _showFlash = false;
   String _hint = "Positionnez votre visage";
+  
+  // Logic for manual fallback
+  int _failedAttempts = 0;
+  bool _showManualButton = false;
 
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(enableClassification: true, performanceMode: FaceDetectorMode.accurate),
@@ -58,7 +62,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     setState(() {});
 
     _controller!.startImageStream((image) {
-      if (_isBusy || _isSuccess) return;
+      if (_isBusy || _isSuccess || _showManualButton) return;
       _isBusy = true;
       _processCameraImage(image);
     });
@@ -84,37 +88,56 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           }
           if (mounted) setState(() => _hint = "Veuillez cligner des yeux");
         } else {
-          if (mounted) setState(() => _hint = "Analyse en cours...");
-          
-          if (mounted) {
-            setState(() => _showFlash = true);
-            Future.delayed(const Duration(milliseconds: 150), () {
-              if (mounted) setState(() => _showFlash = false);
-            });
-          }
-
-          final file = await _controller!.takePicture();
-          final res = await faceRecognitionController.recognizeFaceFromImage(file);
-          
-          if (res != null && res is Map && res['matricule'] != 'Inconnu') {
-            if (mounted) {
-              setState(() { 
-                _detectedMatricule = res['matricule']?.toString();
-                _detectedName = res['name']?.toString();
-                _capturedImage = file; 
-                _isSuccess = true; 
-              });
-            }
-            await _controller!.stopImageStream();
-          } else {
-            _hasBlinked = false;
-          }
+          await _performCaptureAndVerify();
         }
       }
     } catch (e) {
       debugPrint("Error: $e");
     } finally {
       _isBusy = false;
+    }
+  }
+
+  Future<void> _performCaptureAndVerify({bool manual = false}) async {
+    if (mounted) setState(() => _hint = manual ? "Vérification manuelle..." : "Analyse en cours...");
+    
+    if (mounted) {
+      setState(() => _showFlash = true);
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (mounted) setState(() => _showFlash = false);
+      });
+    }
+
+    final file = await _controller!.takePicture();
+    final res = await faceRecognitionController.recognizeFaceFromImage(file);
+    
+    if (res != null && res is Map && res['matricule'] != 'Inconnu') {
+      if (mounted) {
+        setState(() { 
+          _detectedMatricule = res['matricule']?.toString();
+          _detectedName = res['name']?.toString();
+          _capturedImage = file; 
+          _isSuccess = true; 
+          _showManualButton = false;
+        });
+      }
+      await _controller!.stopImageStream();
+    } else {
+      if (mounted) {
+        setState(() {
+          _hasBlinked = false;
+          _failedAttempts++;
+          if (_failedAttempts >= 2) {
+            _showManualButton = true;
+            _hint = "Échec automatique. Utilisez le bouton.";
+          } else {
+            _hint = "Visage inconnu, réessayez...";
+          }
+        });
+      }
+      if (manual) {
+        EasyLoading.showError("Visage inconnu. Vérifiez de nouveau.");
+      }
     }
   }
 
@@ -159,6 +182,8 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       _detectedMatricule = null;
       _detectedName = null;
       _hasBlinked = false;
+      _failedAttempts = 0;
+      _showManualButton = false;
       _hint = "Positionnez votre visage";
     });
     _initCamera();
@@ -203,7 +228,12 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                   const Spacer(),
                   _buildCameraCircle(scale),
                   const Spacer(),
-                  if (!_isSuccess) _buildLoader(scale),
+                  if (!_isSuccess) ...[
+                    if (_showManualButton)
+                      _buildManualVerifyButton(scale)
+                    else
+                      _buildLoader(scale),
+                  ],
                   if (_isSuccess) ...[
                     Text(
                       "Sélectionnez votre action :",
@@ -239,6 +269,28 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Row(children: [IconButton(onPressed: widget.onCancel, icon: const Icon(Icons.close)), const Spacer(), const KioskBadge(label: "SCAN BIOMÉTRIQUE")]),
+    );
+  }
+
+  Widget _buildManualVerifyButton(double scale) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 40),
+      child: ElevatedButton.icon(
+        onPressed: () => _performCaptureAndVerify(manual: true),
+        icon: const Icon(Icons.camera_alt_rounded, color: Colors.white),
+        label: const Text("Vérifier manuellement"),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.purple,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          textStyle: TextStyle(
+            fontFamily: 'Ubuntu',
+            fontWeight: FontWeight.w700,
+            fontSize: 14 * scale,
+          ),
+        ),
+      ),
     );
   }
 
@@ -377,7 +429,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             ), 
             _ReferenceButton(
               icon: Icons.build_circle_rounded, 
-              label: 'Maint. In', 
+              label: 'Maintenance In',
               color: Colors.deepPurple, 
               secondaryColor: Colors.purpleAccent, 
               onTap: () => _submit('maintenance-in')
@@ -386,7 +438,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           Row(children: [
             _ReferenceButton(
               icon: Icons.hail_rounded, 
-              label: 'Maint. Out', 
+              label: 'Maintenance Out',
               color: Colors.pink, 
               secondaryColor: Colors.pinkAccent, 
               onTap: () => _submit('maintenance-out')
@@ -432,9 +484,23 @@ class _ReferenceButton extends StatelessWidget {
           child: Container(
             height: 60 * scale,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.05),
+              gradient: LinearGradient(
+                colors: [
+                  color.withOpacity(0.18),
+                  color.withOpacity(0.08),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: color.withOpacity(0.3), width: 1.2),
+              border: Border.all(color: color.withOpacity(0.4), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                )
+              ],
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -450,6 +516,13 @@ class _ReferenceButton extends StatelessWidget {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withOpacity(0.4),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        )
+                      ],
                     ),
                     child: Icon(icon, color: Colors.white, size: 18 * scale),
                   ),
@@ -460,10 +533,11 @@ class _ReferenceButton extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: color.withOpacity(0.9), 
-                        fontWeight: FontWeight.w800, 
-                        fontSize: 11 * scale, 
-                        fontFamily: 'Ubuntu'
+                        color: color.withOpacity(0.95), 
+                        fontWeight: FontWeight.w900, 
+                        fontSize: 11.5 * scale, 
+                        fontFamily: 'Ubuntu',
+                        letterSpacing: 0.2,
                       )
                     ),
                   )
