@@ -139,14 +139,14 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
                                       ),
                                       const SizedBox(width: 20),
                                       _CircleAdminButton(
-                                        icon: Icons.qr_code_scanner_rounded,
+                                        icon: Icons.location_on_outlined,
                                         label: "STATION",
                                         onTap: _handleRescanStation,
                                         scale: scale,
                                       ),
                                       const SizedBox(width: 20),
                                       _CircleAdminButton(
-                                        icon: _isKioskEnabled ? CupertinoIcons.lock_open_fill : CupertinoIcons.lock_fill,
+                                        icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
                                         label: _isKioskEnabled ? "QUITTER" : "ACTIVER",
                                         color: _isKioskEnabled ? Colors.redAccent : Colors.orange,
                                         onTap: _handleMdmToggle,

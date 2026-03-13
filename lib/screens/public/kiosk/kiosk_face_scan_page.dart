@@ -35,6 +35,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   // Logic for manual fallback
   int _failedAttempts = 0;
   bool _showManualButton = false;
+  bool _manualFailed = false;
 
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(enableClassification: true, performanceMode: FaceDetectorMode.accurate),
@@ -62,7 +63,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     setState(() {});
 
     _controller!.startImageStream((image) {
-      if (_isBusy || _isSuccess || _showManualButton) return;
+      if (_isBusy || _isSuccess || _showManualButton || _manualFailed) return;
       _isBusy = true;
       _processCameraImage(image);
     });
@@ -119,6 +120,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           _capturedImage = file; 
           _isSuccess = true; 
           _showManualButton = false;
+          _manualFailed = false;
         });
       }
       await _controller!.stopImageStream();
@@ -126,17 +128,22 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       if (mounted) {
         setState(() {
           _hasBlinked = false;
-          _failedAttempts++;
-          if (_failedAttempts >= 2) {
-            _showManualButton = true;
-            _hint = "Échec automatique. Utilisez le bouton.";
+          if (manual) {
+            _manualFailed = true;
+            _hint = "Échec manuel. Veuillez relancer.";
           } else {
-            _hint = "Visage inconnu, réessayez...";
+            _failedAttempts++;
+            if (_failedAttempts >= 4) {
+              _showManualButton = true;
+              _hint = "Échec automatique. Utilisez le bouton.";
+            } else {
+              _hint = "Visage inconnu, réessayez...";
+            }
           }
         });
       }
       if (manual) {
-        EasyLoading.showError("Visage inconnu. Vérifiez de nouveau.");
+        EasyLoading.showInfo("Visage inconnu. Vérifiez de nouveau.");
       }
     }
   }
@@ -184,9 +191,17 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       _hasBlinked = false;
       _failedAttempts = 0;
       _showManualButton = false;
+      _manualFailed = false;
       _hint = "Positionnez votre visage";
     });
-    _initCamera();
+    // Restart image stream if it was stopped
+    if (_controller != null && _controller!.value.isInitialized) {
+      _controller!.startImageStream((image) {
+        if (_isBusy || _isSuccess || _showManualButton || _manualFailed) return;
+        _isBusy = true;
+        _processCameraImage(image);
+      });
+    }
   }
 
   @override
@@ -217,9 +232,13 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                 children: [
                   _buildTopBar(),
                   SizedBox(height: 8 * scale),
-                  Text(
-                    _isSuccess ? "Identifié" : _hint, 
-                    style: kioskTitle(context).copyWith(fontSize: 24 * scale)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      _isSuccess ? "Identifié" : _hint, 
+                      textAlign: TextAlign.center,
+                      style: kioskTitle(context).copyWith(fontSize: 24 * scale)
+                    ),
                   ),
                   if (_isSuccess) ...[
                     SizedBox(height: 12 * scale),
@@ -229,7 +248,9 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                   _buildCameraCircle(scale),
                   const Spacer(),
                   if (!_isSuccess) ...[
-                    if (_showManualButton)
+                    if (_manualFailed)
+                      _buildRelancerButton(scale)
+                    else if (_showManualButton)
                       _buildManualVerifyButton(scale)
                     else
                       _buildLoader(scale),
@@ -273,22 +294,64 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   }
 
   Widget _buildManualVerifyButton(double scale) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 40),
-      child: ElevatedButton.icon(
-        onPressed: () => _performCaptureAndVerify(manual: true),
-        icon: const Icon(Icons.camera_alt_rounded, color: Colors.white),
-        label: const Text("Vérifier manuellement"),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.purple,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          textStyle: TextStyle(
-            fontFamily: 'Ubuntu',
-            fontWeight: FontWeight.w700,
-            fontSize: 14 * scale,
-          ),
+    return InkWell(
+      onTap: () => _performCaptureAndVerify(manual: true),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.purple.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.purple.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.camera_alt_rounded, color: Colors.purple, size: 18 * scale),
+            SizedBox(width: 12 * scale),
+            Text(
+              "Vérifier manuellement",
+              style: TextStyle(
+                fontFamily: 'Ubuntu',
+                color: Colors.purple.shade700,
+                fontWeight: FontWeight.w700,
+                fontSize: 13 * scale
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRelancerButton(double scale) {
+    return InkWell(
+      onTap: _resetCamera,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.blueGrey.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.blueGrey.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.refresh_rounded, color: Colors.blueGrey, size: 18 * scale),
+            SizedBox(width: 12 * scale),
+            Text(
+              "Relancer le scan",
+              style: TextStyle(
+                fontFamily: 'Ubuntu',
+                color: Colors.blueGrey.shade700,
+                fontWeight: FontWeight.w700,
+                fontSize: 13 * scale
+              ),
+            ),
+          ],
         ),
       ),
     );
