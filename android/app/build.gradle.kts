@@ -1,5 +1,8 @@
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -53,6 +56,9 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 
     implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }
 
 flutter {
