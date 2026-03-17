@@ -11,42 +11,45 @@ import '/kernel/models/face.dart';
 import '/kernel/services/database_helper.dart';
 
 List<List<List<List<double>>>> processImage(Map<String, dynamic> args) {
-  final Uint8List bytes = args['bytes'];
-  final int left = args['left'];
-  final int top = args['top'];
-  final int width = args['width'];
-  final int height = args['height'];
+  try {
+    final Uint8List bytes = args['bytes'];
+    final int left = args['left'];
+    final int top = args['top'];
+    final int width = args['width'];
+    final int height = args['height'];
 
-  final originalImage = img.decodeImage(bytes);
-  if (originalImage == null) return [];
+    final originalImage = img.decodeImage(bytes);
+    if (originalImage == null) return [];
 
-  // Robust crop with safety margins
-  final int safeLeft = (left - (width * 0.1)).clamp(0, originalImage.width - 1).toInt();
-  final int safeTop = (top - (height * 0.1)).clamp(0, originalImage.height - 1).toInt();
-  final int safeWidth = (width * 1.2).clamp(1, originalImage.width - safeLeft).toInt();
-  final int safeHeight = (height * 1.2).clamp(1, originalImage.height - safeTop).toInt();
+    final int safeLeft = (left - (width * 0.1)).clamp(0, originalImage.width - 1).toInt();
+    final int safeTop = (top - (height * 0.1)).clamp(0, originalImage.height - 1).toInt();
+    final int safeWidth = (width * 1.2).clamp(1, originalImage.width - safeLeft).toInt();
+    final int safeHeight = (height * 1.2).clamp(1, originalImage.height - safeTop).toInt();
 
-  final cropped = img.copyCrop(originalImage, safeLeft, safeTop, safeWidth, safeHeight);
-  final resized = img.copyResizeCropSquare(cropped, 112);
+    final cropped = img.copyCrop(originalImage, safeLeft, safeTop, safeWidth, safeHeight);
+    final resized = img.copyResizeCropSquare(cropped, 112);
 
-  return List.generate(
-    1,
-    (_) => List.generate(
-      112,
-      (y) => List.generate(
+    return List.generate(
+      1,
+      (_) => List.generate(
         112,
-        (x) {
-          final pixel = resized.getPixel(x, y);
-          // Standard FaceNet normalization: (x - 127.5) / 128.0
-          return [
-            (img.getRed(pixel) - 127.5) / 128.0,
-            (img.getGreen(pixel) - 127.5) / 128.0,
-            (img.getBlue(pixel) - 127.5) / 128.0,
-          ];
-        },
+        (y) => List.generate(
+          112,
+          (x) {
+            final pixel = resized.getPixel(x, y);
+            return [
+              (img.getRed(pixel) - 127.5) / 128.0,
+              (img.getGreen(pixel) - 127.5) / 128.0,
+              (img.getBlue(pixel) - 127.5) / 128.0,
+            ];
+          },
+        ),
       ),
-    ),
-  );
+    );
+  } catch (e) {
+    debugPrint("Isolate process error: $e");
+    return [];
+  }
 }
 
 class FaceRecognitionController extends GetxController {
@@ -67,16 +70,24 @@ class FaceRecognitionController extends GetxController {
       _interpreter = await Interpreter.fromAsset('assets/models/facenet.tflite');
       await reloadTemplates();
       isModelLoaded.value = true;
+      debugPrint('FaceNet model loaded successfully');
     } catch (e) {
+      isModelLoaded.value = false;
       debugPrint('Model init error: $e');
+      // Visible en release pour le debug
+      EasyLoading.showError("Erreur chargement IA: $e");
     }
   }
 
   Future<void> reloadTemplates() async {
-    await DatabaseHelper().init();
-    final faces = await DatabaseHelper().getAllFaces();
-    _storedTemplates.clear();
-    _storedTemplates.addAll(faces);
+    try {
+      await DatabaseHelper().init();
+      final faces = await DatabaseHelper().getAllFaces();
+      _storedTemplates.clear();
+      _storedTemplates.addAll(faces);
+    } catch (e) {
+      debugPrint('Reload templates error: $e');
+    }
   }
 
   Future<void> addKnownFaceFromImage(String matricule, String? name, XFile image) async {
@@ -89,37 +100,48 @@ class FaceRecognitionController extends GetxController {
   }
 
   Future<List<double>?> getEmbedding(XFile imageFile) async {
-    if (_interpreter == null) return null;
+    try {
+      if (_interpreter == null) {
+        EasyLoading.showError("Moteur IA non prêt");
+        return null;
+      }
 
-    final inputImage = InputImage.fromFilePath(imageFile.path);
-    final detector = FaceDetector(options: FaceDetectorOptions(performanceMode: FaceDetectorMode.accurate));
-    final faces = await detector.processImage(inputImage);
-    await detector.close();
+      final inputImage = InputImage.fromFilePath(imageFile.path);
+      final detector = FaceDetector(options: FaceDetectorOptions(performanceMode: FaceDetectorMode.accurate));
+      final faces = await detector.processImage(inputImage);
+      await detector.close();
 
-    if (faces.isEmpty) return null;
+      if (faces.isEmpty) {
+        debugPrint("No face detected in capture");
+        return null;
+      }
 
-    final faceBox = faces.first.boundingBox;
-    final bytes = await imageFile.readAsBytes();
+      final faceBox = faces.first.boundingBox;
+      final bytes = await imageFile.readAsBytes();
 
-    final input = await compute(processImage, {
-      'bytes': bytes,
-      'left': faceBox.left.toInt(),
-      'top': faceBox.top.toInt(),
-      'width': faceBox.width.toInt(),
-      'height': faceBox.height.toInt(),
-    });
+      // compute() peut être instable en Release si mal configuré
+      final input = await compute(processImage, {
+        'bytes': bytes,
+        'left': faceBox.left.toInt(),
+        'top': faceBox.top.toInt(),
+        'width': faceBox.width.toInt(),
+        'height': faceBox.height.toInt(),
+      });
 
-    if (input.isEmpty) return null;
+      if (input.isEmpty) return null;
 
-    final output = List.filled(128, 0.0).reshape([1, 128]);
-    _interpreter!.run(input, output);
+      final output = List.filled(128, 0.0).reshape([1, 128]);
+      _interpreter!.run(input, output);
 
-    final List<double> result = List<double>.from(output[0]);
-    // Embedding Normalization
-    double sum = 0;
-    for (var v in result) sum += v * v;
-    double norm = sqrt(sum);
-    return result.map((e) => e / (norm > 0 ? norm : 1.0)).toList();
+      final List<double> result = List<double>.from(output[0]);
+      double sum = 0;
+      for (var v in result) sum += v * v;
+      double norm = sqrt(sum);
+      return result.map((e) => e / (norm > 0 ? norm : 1.0)).toList();
+    } catch (e) {
+      EasyLoading.showError("Erreur biométrique: $e");
+      return null;
+    }
   }
 
   Future<Map<String, dynamic>?> recognizeFaceFromImage(XFile? image) async {
@@ -138,16 +160,12 @@ class FaceRecognitionController extends GetxController {
       }
     }
 
-    // ROBUST THRESHOLD: 0.65 is the sweet spot for Facenet on mobile
     if (closestTemplate != null && minDistance < 0.65) {
-      debugPrint("MATCH SUCCESS: ${closestTemplate.matricule} (Dist: $minDistance)");
       return {
         'matricule': closestTemplate.matricule,
         'name': closestTemplate.name ?? 'Inconnu'
       };
     }
-    
-    debugPrint("NO MATCH: Best was ${closestTemplate?.matricule} (Dist: $minDistance)");
     return null;
   }
 

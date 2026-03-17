@@ -15,7 +15,6 @@
 
     <application
         android:label="terminal"
-        android:testOnly="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         

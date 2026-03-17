@@ -14,10 +14,15 @@ import 'kernel/controllers/face_recognition_controller.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Initialiser Firebase pour cet isolate
   await Firebase.initializeApp();
-  // On ne peut pas facilement manipuler SQLite ici sans réinitialiser les services,
-  // mais on peut au moins logger ou préparer une synchro au prochain démarrage.
-  print("Background message received: ${message.data}");
+  
+  // Initialiser GetStorage car DeviceService peut l'utiliser
+  await GetStorage.init();
+
+  // Traiter la synchronisation biométrique en arrière-plan (SANS UI/EasyLoading)
+  final syncService = SyncService();
+  await syncService.handleNotification(message, silent: true);
 }
 
 void main() async {

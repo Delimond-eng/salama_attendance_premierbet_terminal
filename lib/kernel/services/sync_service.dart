@@ -24,12 +24,12 @@ class SyncService {
 
     FirebaseMessaging.onMessage.listen((message) {
       _logFcmMessage(message, "FOREGROUND");
-      _handleNotification(message);
+      handleNotification(message, silent: false);
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       _logFcmMessage(message, "OPENED_APP");
-      _handleNotification(message);
+      handleNotification(message, silent: false);
     });
   }
 
@@ -56,29 +56,55 @@ class SyncService {
     );
   }
 
-  void _handleNotification(RemoteMessage message) {
-    if (message.data['type'] == 'biometric_sync') {
-      try {
-        dynamic rawMatricules = message.data['matricules'];
-        List<String> matricules = [];
-        if (rawMatricules is List) {
-          matricules = List<String>.from(rawMatricules);
-        } else if (rawMatricules is String) {
-          matricules = List<String>.from(jsonDecode(rawMatricules));
-        }
-
-        if (matricules.isNotEmpty) {
-          syncMatricules(matricules);
-        }
-      } catch (e) {
-        dev.log("❌ Erreur parsing FCM: $e");
+  /// Point d'entrée pour le traitement des notifications (Foreground & Background)
+  Future<void> handleNotification(RemoteMessage message, {bool silent = true}) async {
+    final String? type = message.data['type'];
+    final dynamic rawMatricules = message.data['matricules'];
+    
+    List<String> matricules = [];
+    try {
+      if (rawMatricules is List) {
+        matricules = List<String>.from(rawMatricules);
+      } else if (rawMatricules is String) {
+        matricules = List<String>.from(jsonDecode(rawMatricules));
       }
+    } catch (e) {
+      dev.log("❌ Erreur parsing matricules FCM: $e");
+      return;
+    }
+
+    if (matricules.isEmpty) return;
+
+    if (type == 'biometric_sync') {
+      await syncMatricules(matricules, silent: silent);
+    } 
+    else if (type == 'biometric_delete') {
+      await deleteMatricules(matricules, silent: silent);
     }
   }
 
-  Future<void> syncMatricules(List<String> matricules) async {
+  Future<void> deleteMatricules(List<String> matricules, {bool silent = true}) async {
     try {
-      EasyLoading.show(status: 'Synchronisation biométrique...');
+      if (!silent) EasyLoading.show(status: 'Suppression biométrique...');
+      
+      for (var matricule in matricules) {
+        await _dbHelper.deleteFace(matricule);
+      }
+
+      // Recharger les templates seulement si on est dans l'isolate principal (UI)
+      if (Get.isRegistered<FaceRecognitionController>()) {
+        await FaceRecognitionController.instance.reloadTemplates();
+      }
+
+      if (!silent) EasyLoading.showSuccess('${matricules.length} agents supprimés');
+    } catch (e) {
+      if (!silent) EasyLoading.showError('Erreur de suppression');
+    }
+  }
+
+  Future<void> syncMatricules(List<String> matricules, {bool silent = true}) async {
+    try {
+      if (!silent) EasyLoading.show(status: 'Synchronisation biométrique...');
 
       final response = await Api.request(
         method: 'post',
@@ -108,18 +134,16 @@ class SyncService {
           await _dbHelper.insertFace(face);
         }
         
-        // CRUCIAL: Recharger les templates en mémoire pour la reconnaissance
         if (Get.isRegistered<FaceRecognitionController>()) {
           await FaceRecognitionController.instance.reloadTemplates();
         }
 
-        EasyLoading.showSuccess('${data.length} agents synchronisés');
+        if (!silent) EasyLoading.showSuccess('${data.length} agents synchronisés');
       } else {
-        EasyLoading.showError('Échec de la synchronisation');
+        if (!silent) EasyLoading.showError('Échec de la synchronisation');
       }
     } catch (e) {
-      dev.log("❌ Sync error: $e");
-      EasyLoading.showError('Erreur de connexion');
+      if (!silent) EasyLoading.showError('Erreur de connexion');
     }
   }
 }
