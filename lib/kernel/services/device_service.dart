@@ -8,37 +8,33 @@ class DeviceService {
   static final GetStorage _storage = GetStorage();
   static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
-  /// Récupère un identifiant unique stable (Compatible Android 11+)
+  /// Récupère un identifiant UNIQUE et PERSISTANT pour ce téléphone.
+  /// L'UUID est généré une seule fois et stocké localement.
   static Future<String> getDeviceId() async {
+    // 1. On vérifie si un ID a déjà été généré et stocké
     String? storedId = _storage.read('device_unique_id');
-    if (storedId != null) return storedId;
-
-    String finalId = "";
-    try {
-      if (Platform.isAndroid) {
-        AndroidDeviceInfo androidInfo = await _deviceInfo.androidInfo;
-        // L'ID Android est stable et ne nécessite pas de permissions sensibles
-        finalId = androidInfo.id;
-      } else if (Platform.isIOS) {
-        IosDeviceInfo iosInfo = await _deviceInfo.iosInfo;
-        finalId = iosInfo.identifierForVendor ?? const Uuid().v4();
-      } else {
-        finalId = const Uuid().v4();
-      }
-    } catch (e) {
-      finalId = const Uuid().v4();
+    
+    // Si l'ID existe et qu'il n'est pas un ID système générique (comme le Build ID Android)
+    if (storedId != null && storedId.contains('-')) {
+      return storedId;
     }
 
-    await _storage.write('device_unique_id', finalId);
-    return finalId;
+    // 2. Si non, on génère un UUID v4 (ex: 550e8400-e29b-41d4-a716-446655440000)
+    // C'est statistiquement unique pour chaque téléphone.
+    String newId = const Uuid().v4();
+
+    // 3. On le sauvegarde de manière persistante (GetStorage)
+    await _storage.write('device_unique_id', newId);
+    
+    return newId;
   }
 
-  /// Récupère le nom du modèle de l'appareil
+  /// Récupère le nom réel du modèle de l'appareil (ex: "SAMSUNG SM-G980")
   static Future<String> getDeviceName() async {
     try {
       if (Platform.isAndroid) {
         AndroidDeviceInfo info = await _deviceInfo.androidInfo;
-        return "${info.brand} ${info.model}";
+        return "${info.brand.toUpperCase()} ${info.model}";
       } else if (Platform.isIOS) {
         IosDeviceInfo info = await _deviceInfo.iosInfo;
         return info.name;
@@ -47,7 +43,7 @@ class DeviceService {
     return "Terminal Inconnu";
   }
 
-  /// Récupère le token Firebase
+  /// Récupère le token Firebase Cloud Messaging
   static Future<String?> getFcmToken() async {
     try {
       return await FirebaseMessaging.instance.getToken();

@@ -55,11 +55,14 @@ public class MdmKioskManager {
             dpm.addPersistentPreferredActivity(adminName, filter, new ComponentName(context.getPackageName(), MainActivity.class.getName()));
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                // Bloque Home, Recents et la barre de Status au niveau matériel
-                dpm.setLockTaskFeatures(adminName, DevicePolicyManager.LOCK_TASK_FEATURE_NONE);
+                // Autorise le bouton Power (GLOBAL_ACTIONS) et la Keyguard (si désiré)
+                // On active LOCK_TASK_FEATURE_GLOBAL_ACTIONS pour permettre d'éteindre/redémarrer
+                dpm.setLockTaskFeatures(adminName, DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS);
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                // On ne désactive pas forcément la keyguard si on veut permettre le verrouillage power
+                // Mais pour un kiosk pur, on la laisse désactivée.
                 dpm.setKeyguardDisabled(adminName, true);
                 dpm.setStatusBarDisabled(adminName, true);
             }

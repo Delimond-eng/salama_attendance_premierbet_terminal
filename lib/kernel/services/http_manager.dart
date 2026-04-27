@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
@@ -57,7 +58,6 @@ class HttpManager {
     }
   }
 
-  /// Enrôlement consolidé : Calcule la moyenne des 3 embeddings pour une signature unique
   Future<dynamic> enrollAgent(String matricule, {List<XFile>? capturedImages}) async {
     try {
       final List<XFile> images = (capturedImages != null && capturedImages.isNotEmpty) 
@@ -79,7 +79,6 @@ class HttpManager {
         return null;
       }
 
-      // Calcul de l'embedding moyen (signature consolidée)
       int size = embeddings[0].length;
       List<double> meanEmbedding = List.filled(size, 0.0);
       for (var e in embeddings) {
@@ -107,7 +106,6 @@ class HttpManager {
       );
       
       if (response != null && response is Map && response["status"] == "success") {
-        // Optionnel : Sauvegarder localement l'embedding MOYEN pour cohérence totale
         final agentData = response["result"] as Map?;
         final String? agentName = agentData != null ? agentData["fullname"] : null;
         
@@ -126,8 +124,7 @@ class HttpManager {
       }
       
       EasyLoading.dismiss();
-      String error = _extractErrorMessage(response);
-      EasyLoading.showError(error);
+      EasyLoading.showError(_extractErrorMessage(response));
       return response;
     } catch (e) {
       EasyLoading.dismiss();
@@ -135,13 +132,74 @@ class HttpManager {
     }
   }
 
+  Future<dynamic> checkPresence({required String key}) async {
+    try {
+      // 1. Vérification du matricule reconnu
+      String matricule = tagsController.faceResult.value;
+      if (matricule.isEmpty) {
+        EasyLoading.showError("Identité non reconnue.");
+        return "Identité non reconnue";
+      }
+
+      if (tagsController.face.value == null) {
+        EasyLoading.showError("Photo manquante.");
+        return "Photo manquante";
+      }
+
+      EasyLoading.show(status: 'Pointage en cours...');
+      
+      final latlng = await _getLatlng();
+      String formattedKey = key.toLowerCase().replaceAll(" ", "-");
+
+      Map<String, dynamic> data = {
+        "matricule": matricule,
+        "station_id": tagsController.activeStation.value?['id'],
+        "coordonnees": latlng ?? "0.0,0.0",
+        "key": formattedKey,
+      };
+
+      dev.log("📤 PUNCH DATA: $data");
+
+      var response = await Api.request(
+        url: "agent.punch",
+        method: "post",
+        body: data,
+        files: {'photo': File(tagsController.face.value!.path)},
+      );
+
+      if (response != null && response is Map) {
+        if (response.containsKey("errors") || response["status"] == "error") {
+          String msg = _extractErrorMessage(response);
+          EasyLoading.showError(msg);
+          return msg;
+        }
+        EasyLoading.showSuccess("Pointage validé !");
+        return "success";
+      }
+      
+      EasyLoading.showError("Erreur lors du pointage.");
+      return "error";
+    } catch (e) {
+      dev.log("❌ PUNCH ERROR: $e");
+      EasyLoading.showError("Échec de la connexion.");
+      return "error";
+    }
+  }
+
   Future<dynamic> identifyStation({bool getPosition = false}) async {
     try {
       var stationId = tagsController.activeStation.value?['id'];
       String? latlng;
-      if (getPosition) latlng = await _getLatlng();
+      if (getPosition) {
+        latlng = await _getLatlng();
+      }
 
-      var data = {"station_id": stationId, "latlng": latlng};
+      // On n'envoie latlng que s'il est récupéré (pour éviter les updates non désirés)
+      var data = {"station_id": stationId};
+      if (latlng != null) {
+        data["latlng"] = latlng;
+      }
+
       var response = await Api.request(url: "station.scan", method: "post", body: data);
       
       if (response != null && response is Map) {
@@ -154,31 +212,6 @@ class HttpManager {
       return _extractErrorMessage(response);
     } catch (e) {
       return "Erreur station";
-    }
-  }
-
-  Future<dynamic> checkPresence({required String key}) async {
-    try {
-      if (tagsController.face.value == null) return "Photo manquante.";
-      final latlng = await _getLatlng();
-
-      Map<String, dynamic> data = {
-        "matricule": tagsController.faceResult.value,
-        "station_id": tagsController.activeStation.value?['id'],
-        "coordonnees": latlng,
-        "key": key.toLowerCase().replaceAll(" ", "-"),
-      };
-
-      var response = await Api.request(
-        url: "agent.punch",
-        method: "post",
-        body: data,
-        files: {'photo': File(tagsController.face.value!.path)},
-      );
-
-      return (response != null && response is Map && !response.containsKey("errors")) ? "success" : _extractErrorMessage(response);
-    } catch (e) {
-      return "Erreur pointage";
     }
   }
 }

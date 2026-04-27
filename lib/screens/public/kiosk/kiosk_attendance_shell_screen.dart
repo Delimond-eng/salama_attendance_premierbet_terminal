@@ -88,7 +88,10 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
         body: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset('assets/images/attendance.jpg', fit: BoxFit.cover),
+            Image.asset('assets/images/attendance.jpg',
+              fit: BoxFit.cover,
+              alignment: Alignment.centerRight,
+            ),
             Container(color: KioskColors.primary.withOpacity(0.75)),
             SafeArea(
               child: Column(

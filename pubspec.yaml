@@ -46,6 +46,7 @@ dependencies:
   firebase_messaging: ^16.1.2
   uuid: ^4.1.0
   device_info_plus: ^10.1.0
+  ota_update: ^7.1.0
 
 dev_dependencies:
   flutter_test:

@@ -1,0 +1,93 @@
+// Action Buttons in  Face scan response
+
+class _ReferenceButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color secondaryColor;
+  final VoidCallback onTap;
+
+  const _ReferenceButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.secondaryColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = kioskScale(context);
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            height: 92 * scale,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color, secondaryColor],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white, width: 1.2),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned(
+                  right: -8,
+                  top: -10,
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Colors.white54,
+                    size: 30 * scale,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 40 * scale,
+                        height: 40 * scale,
+                        decoration: BoxDecoration(
+                          color: Colors.white54,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(icon, color: color, size: 22 * scale),
+                      ),
+                      SizedBox(height: 10 * scale),
+                      Expanded(
+                        child: Text(
+                          label.toUpperCase(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12 * scale,
+                            fontFamily: 'Ubuntu',
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

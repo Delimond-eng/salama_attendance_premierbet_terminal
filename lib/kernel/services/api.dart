@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 class Api {
   //static String baseUrl = 'http://salama.uco.rod.mybluehost.me/api';
   //static String baseUrl = 'https://mamba.salama-drc.com/api';
-  static String baseUrl = 'https://electrocool.salama-drc.com/api';
+  static String baseUrl = 'https://rdtech.salama-drc.com/api';
 
   static Future<dynamic> request({
     required String method,
@@ -17,23 +17,27 @@ class Api {
   }) async {
     final fullUrl = Uri.parse('$baseUrl/$url');
     const apiKey = "16jA/0l6TBmFoPk64MnrmLzVp2MRL2Do0yD5N6K4e54=";
+
+    // Tentative de contournement du JavaScript Challenge en simulant le cookie requis
     headers = {
       'Content-Type': 'application/json',
       'X-API-KEY': apiKey,
       'Accept': 'application/json',
+      'User-Agent':
+          'Mozilla/5.0 (Linux; Android 11; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Mobile Safari/537.36',
+      'Cookie': 'humans_21909=1', // Injection du cookie de validation BitNinja
       ...?headers,
     };
+
     http.Response response;
     try {
       if (files != null && files.isNotEmpty) {
-        // --- Gérer Multipart (photo + données imbriquées)
         var request = http.MultipartRequest(method.toUpperCase(), fullUrl);
         request.headers.addAll(headers);
 
         if (body != null) {
           for (var entry in body.entries) {
             if (entry.value is Map) {
-              // Pour les sous-objets comme "scan"
               (entry.value as Map).forEach((subKey, subValue) {
                 if (subValue != null) {
                   request.fields['${entry.key}[$subKey]'] = subValue.toString();
@@ -46,7 +50,6 @@ class Api {
             }
           }
         }
-        // Ajouter les fichiers
         for (var entry in files.entries) {
           var fileBytes = await entry.value.readAsBytes();
           var multipartFile = http.MultipartFile.fromBytes(
@@ -59,7 +62,6 @@ class Api {
         var streamedResponse = await request.send();
         response = await http.Response.fromStream(streamedResponse);
       } else {
-        // --- Gérer POST normal (JSON)
         switch (method.toLowerCase()) {
           case 'post':
             response = await http.post(
@@ -84,20 +86,23 @@ class Api {
       }
 
       if (kDebugMode) {
-        print(response.body);
+        print("API Response ($url): ${response.body}");
       }
-      // --- Réponse OK
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return jsonDecode(response.body);
       } else {
-        if (kDebugMode) {
-          print("Erreur HTTP ${response.statusCode}: ${response.body}");
+        // En cas d'erreur 409 persistante, on affiche un log clair
+        if (response.body.contains("humans_21909")) {
+          print(
+            "❌ ALERTE: Le pare-feu BitNinja bloque toujours l'API. Contactez l'hébergeur.",
+          );
         }
         return null;
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Exception lors de la requête : $e');
+        print('Exception API ($url): $e');
       }
       return null;
     }

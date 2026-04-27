@@ -21,29 +21,40 @@ List<List<List<List<double>>>> processImage(Map<String, dynamic> args) {
     final originalImage = img.decodeImage(bytes);
     if (originalImage == null) return [];
 
-    final int safeLeft = (left - (width * 0.1)).clamp(0, originalImage.width - 1).toInt();
-    final int safeTop = (top - (height * 0.1)).clamp(0, originalImage.height - 1).toInt();
-    final int safeWidth = (width * 1.2).clamp(1, originalImage.width - safeLeft).toInt();
-    final int safeHeight = (height * 1.2).clamp(1, originalImage.height - safeTop).toInt();
+    final int safeLeft = (left - (width * 0.1))
+        .clamp(0, originalImage.width - 1)
+        .toInt();
+    final int safeTop = (top - (height * 0.1))
+        .clamp(0, originalImage.height - 1)
+        .toInt();
+    final int safeWidth = (width * 1.2)
+        .clamp(1, originalImage.width - safeLeft)
+        .toInt();
+    final int safeHeight = (height * 1.2)
+        .clamp(1, originalImage.height - safeTop)
+        .toInt();
 
-    final cropped = img.copyCrop(originalImage, safeLeft, safeTop, safeWidth, safeHeight);
+    final cropped = img.copyCrop(
+      originalImage,
+      safeLeft,
+      safeTop,
+      safeWidth,
+      safeHeight,
+    );
     final resized = img.copyResizeCropSquare(cropped, 112);
 
     return List.generate(
       1,
       (_) => List.generate(
         112,
-        (y) => List.generate(
-          112,
-          (x) {
-            final pixel = resized.getPixel(x, y);
-            return [
-              (img.getRed(pixel) - 127.5) / 128.0,
-              (img.getGreen(pixel) - 127.5) / 128.0,
-              (img.getBlue(pixel) - 127.5) / 128.0,
-            ];
-          },
-        ),
+        (y) => List.generate(112, (x) {
+          final pixel = resized.getPixel(x, y);
+          return [
+            (img.getRed(pixel) - 127.5) / 128.0,
+            (img.getGreen(pixel) - 127.5) / 128.0,
+            (img.getBlue(pixel) - 127.5) / 128.0,
+          ];
+        }),
       ),
     );
   } catch (e) {
@@ -67,7 +78,9 @@ class FaceRecognitionController extends GetxController {
 
   Future<void> initializeModel() async {
     try {
-      _interpreter = await Interpreter.fromAsset('assets/models/facenet.tflite');
+      _interpreter = await Interpreter.fromAsset(
+        'assets/models/facenet.tflite',
+      );
       await reloadTemplates();
       isModelLoaded.value = true;
       debugPrint('FaceNet model loaded successfully');
@@ -90,11 +103,19 @@ class FaceRecognitionController extends GetxController {
     }
   }
 
-  Future<void> addKnownFaceFromImage(String matricule, String? name, XFile image) async {
+  Future<void> addKnownFaceFromImage(
+    String matricule,
+    String? name,
+    XFile image,
+  ) async {
     final embedding = await getEmbedding(image);
     if (embedding == null) return;
 
-    final face = FacePicture(matricule: matricule, name: name, embedding: embedding);
+    final face = FacePicture(
+      matricule: matricule,
+      name: name,
+      embedding: embedding,
+    );
     await DatabaseHelper().insertFace(face);
     _storedTemplates.add(face);
   }
@@ -107,7 +128,11 @@ class FaceRecognitionController extends GetxController {
       }
 
       final inputImage = InputImage.fromFilePath(imageFile.path);
-      final detector = FaceDetector(options: FaceDetectorOptions(performanceMode: FaceDetectorMode.accurate));
+      final detector = FaceDetector(
+        options: FaceDetectorOptions(
+          performanceMode: FaceDetectorMode.accurate,
+        ),
+      );
       final faces = await detector.processImage(inputImage);
       await detector.close();
 
@@ -159,11 +184,10 @@ class FaceRecognitionController extends GetxController {
         closestTemplate = template;
       }
     }
-
-    if (closestTemplate != null && minDistance < 0.65) {
+    if (closestTemplate != null && minDistance < 0.60) {
       return {
         'matricule': closestTemplate.matricule,
-        'name': closestTemplate.name ?? 'Inconnu'
+        'name': closestTemplate.name ?? 'Inconnu',
       };
     }
     return null;

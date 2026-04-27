@@ -7,6 +7,7 @@ import '/kernel/services/api.dart';
 import '/kernel/services/database_helper.dart';
 import '/kernel/services/device_service.dart';
 import '/kernel/controllers/face_recognition_controller.dart';
+import '/kernel/services/ota_service.dart';
 import 'package:get/get.dart';
 
 class SyncService {
@@ -56,10 +57,21 @@ class SyncService {
     );
   }
 
-  /// Point d'entrée pour le traitement des notifications (Foreground & Background)
   Future<void> handleNotification(RemoteMessage message, {bool silent = true}) async {
     final String? type = message.data['type'];
+
+    // 1. Gestion de la mise à jour OTA
+    if (type == 'update') {
+      final String? url = message.data['url'];
+      if (url != null && url.isNotEmpty) {
+        await OtaService().updateApp(url);
+      }
+      return;
+    }
+
+    // 2. Gestion des synchronisations biométriques
     final dynamic rawMatricules = message.data['matricules'];
+    if (rawMatricules == null) return;
     
     List<String> matricules = [];
     try {
@@ -91,7 +103,6 @@ class SyncService {
         await _dbHelper.deleteFace(matricule);
       }
 
-      // Recharger les templates seulement si on est dans l'isolate principal (UI)
       if (Get.isRegistered<FaceRecognitionController>()) {
         await FaceRecognitionController.instance.reloadTemplates();
       }
@@ -126,7 +137,7 @@ class SyncService {
 
           final face = FacePicture(
             matricule: item['matricule'],
-            name: item['matricule'],
+            name: item['name'] ?? item['fullname'] ?? item['matricule'],
             embedding: embedding,
           );
           
