@@ -525,8 +525,9 @@ class FaceMaskPainter extends CustomPainter {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final ovalWidth = size.width * 0.72;
     final ovalHeight = ovalWidth * 1.35;
+    final center = Offset(size.width / 2, size.height * 0.42);
     final ovalRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.42),
+      center: center,
       width: ovalWidth,
       height: ovalHeight,
     );
@@ -546,6 +547,61 @@ class FaceMaskPainter extends CustomPainter {
       ..strokeWidth = 3;
 
     _drawDashedOval(canvas, ovalRect, borderPaint);
+
+    // Draw symmetry lines (Cross)
+    final linePaint = Paint()
+      ..color = Colors.white.withOpacity(0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+
+    // Vertical line
+    canvas.drawLine(
+      Offset(center.dx, ovalRect.top),
+      Offset(center.dx, ovalRect.bottom),
+      linePaint,
+    );
+
+    // Horizontal line
+    canvas.drawLine(
+      Offset(ovalRect.left, center.dy),
+      Offset(ovalRect.right, center.dy),
+      linePaint,
+    );
+
+    // Draw Scale (Ladder/Graduation)
+    final ladderPaint = Paint()
+      ..color = Colors.white.withOpacity(0.4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    const double stepSize = 12.0;
+    const double tickWidth = 8.0;
+    
+    // Vertical Ladder
+    double currentY = ovalRect.top + stepSize;
+    while (currentY < ovalRect.bottom) {
+      if ((currentY - center.dy).abs() > 5) { // Skip center
+        canvas.drawLine(
+          Offset(center.dx - tickWidth / 2, currentY),
+          Offset(center.dx + tickWidth / 2, currentY),
+          ladderPaint,
+        );
+      }
+      currentY += stepSize;
+    }
+
+    // Horizontal Ladder
+    double currentX = ovalRect.left + stepSize;
+    while (currentX < ovalRect.right) {
+       if ((currentX - center.dx).abs() > 5) { // Skip center
+        canvas.drawLine(
+          Offset(currentX, center.dy - tickWidth / 2),
+          Offset(currentX, center.dy + tickWidth / 2),
+          ladderPaint,
+        );
+      }
+      currentX += stepSize;
+    }
   }
 
   void _drawDashedOval(Canvas canvas, Rect rect, Paint paint) {
