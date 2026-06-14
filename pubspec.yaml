@@ -19,7 +19,6 @@ dependencies:
   flutter_easyloading: ^3.0.5
   get_storage: ^2.1.1
   flutter_spinkit: ^5.2.0
-  #flutter_launcher_icons: ^0.14.3
   form_field_validator: ^1.1.0
   http: ^1.1.0
   sqflite: ^2.3.2
@@ -28,8 +27,7 @@ dependencies:
   path: any
   http_parser: any
   qr_code_scanner_plus: ^2.0.10+1
-  #flutter_native_splash: 
-  #flutter_launcher_icons: 
+  #flutter_native_splash:
   dotted_border: ^2.1.0
   google_mlkit_face_detection: ^0.13.1
   image: ^3.3.0
@@ -52,9 +50,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.11.0
+
 flutter:
   uses-material-design: true
-  # To add assets to your application, add an assets section, like this:
   assets:
     - assets/animations/
     - assets/images/
