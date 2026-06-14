@@ -80,8 +80,10 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light, 
-        statusBarBrightness: Brightness.dark,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: KioskColors.primaryDark,
+        systemNavigationBarIconBrightness: Brightness.light
       ),
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -263,7 +265,7 @@ class _BackButton extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: 12 * scale),
       child: TextButton.icon(
         onPressed: onBack,
-        icon: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white.withOpacity(0.7), size: 18 * scale),
+        icon: Icon(Icons.arrow_back_outlined, color: Colors.white.withOpacity(0.7), size: 18 * scale),
         label: Text('Retour au scan station', style: TextStyle(color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w700, fontFamily: 'Ubuntu', fontSize: 13 * scale)),
       ),
     );

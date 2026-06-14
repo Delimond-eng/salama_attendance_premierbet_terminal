@@ -45,64 +45,57 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-      ),
-      child: Scaffold(
-        body: PageView(
-          controller: _pageController,
-          physics: const NeverScrollableScrollPhysics(),
-          onPageChanged: (index) => tagsController.setPage(index),
-          children: [
-            KioskStartScreen(
-              onStart: () {
-                if (tagsController.activeStation.value != null) {
-                  _updatePage(2);
-                } else {
-                  _updatePage(1);
-                }
-              },
-            ),
-            KioskStationScanScreen( 
-              onSuccess: () => _updatePage(2),
-            ),
-            KioskAttendanceShellScreen(
-              onCheckAction: (type) {
-                tagsController.setAttendanceType(type);
-                Get.to(() => KioskFaceScanPage(
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        physics: const NeverScrollableScrollPhysics(),
+        onPageChanged: (index) => tagsController.setPage(index),
+        children: [
+          KioskStartScreen(
+            onStart: () {
+              if (tagsController.activeStation.value != null) {
+                _updatePage(2);
+              } else {
+                _updatePage(1);
+              }
+            },
+          ),
+          KioskStationScanScreen(
+            onSuccess: () => _updatePage(2),
+          ),
+          KioskAttendanceShellScreen(
+            onCheckAction: (type) {
+              tagsController.setAttendanceType(type);
+              Get.to(() => KioskFaceScanPage(
+                onSuccess: () => _updatePage(3),
+                onCancel: () => Get.back(),
+              ));
+            },
+            onEnrollAction: () async {
+              final authenticated = await Get.dialog<bool>(
+                const KioskAdminPasswordDialog(),
+                barrierDismissible: true,
+              );
+              if (authenticated == true) {
+                tagsController.setAttendanceType("ENROLL");
+                Get.to(() => KioskEnrollPage(
                   onSuccess: () => _updatePage(3),
                   onCancel: () => Get.back(),
                 ));
-              },
-              onEnrollAction: () async {
-                final authenticated = await Get.dialog<bool>(
-                  const KioskAdminPasswordDialog(),
-                  barrierDismissible: true,
-                );
-                if (authenticated == true) {
-                  tagsController.setAttendanceType("ENROLL");
-                  Get.to(() => KioskEnrollPage(
-                    onSuccess: () => _updatePage(3),
-                    onCancel: () => Get.back(),
-                  ));
-                }
-              },
-              onBack: () {
-                tagsController.resetKiosk();
-                localStorage.remove('active_station');
-                _updatePage(1);
-              },
-            ),
-            KioskSuccessScreen(onDone: () => _updatePage(2)),
-            KioskFailureScreen(
-              onRetry: () => Get.back(),
-              onCancel: () { Get.back(); _updatePage(2); },
-            ),
-          ],
-        ),
+              }
+            },
+            onBack: () {
+              tagsController.resetKiosk();
+              localStorage.remove('active_station');
+              _updatePage(1);
+            },
+          ),
+          KioskSuccessScreen(onDone: () => _updatePage(2)),
+          KioskFailureScreen(
+            onRetry: () => Get.back(),
+            onCancel: () { Get.back(); _updatePage(2); },
+          ),
+        ],
       ),
     );
   }

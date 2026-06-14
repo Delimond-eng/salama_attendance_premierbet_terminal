@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'kiosk_admin_faces_page.dart';
 
@@ -63,47 +64,58 @@ class KioskScaffold extends StatelessWidget {
     this.padding,
     this.topSafeArea = true,
     this.bottomSafeArea = true,
+    this.overlayStyle,
   });
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final bool topSafeArea;
   final bool bottomSafeArea;
+  final SystemUiOverlayStyle? overlayStyle;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: KioskColors.backgroundBottom,
-    body: DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [KioskColors.backgroundTop, KioskColors.backgroundBottom],
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+    value: overlayStyle ?? const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.white,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+    child: Scaffold(
+      backgroundColor: KioskColors.backgroundBottom,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [KioskColors.backgroundTop, KioskColors.backgroundBottom],
+          ),
         ),
-      ),
-      child: Stack(
-        children: [
-          const Positioned(
-            top: -130,
-            right: -100,
-            child: _GlowBlob(size: 280, color: KioskColors.primarySoftBg),
-          ),
-          const Positioned(
-            left: -120,
-            bottom: -100,
-            child: _GlowBlob(size: 240, color: KioskColors.surface),
-          ),
-          SafeArea(
-            top: topSafeArea,
-            bottom: bottomSafeArea,
-            child: Padding(
-              padding:
-                  padding ??
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: child,
+        child: Stack(
+          children: [
+            const Positioned(
+              top: -130,
+              right: -100,
+              child: _GlowBlob(size: 280, color: KioskColors.primarySoftBg),
             ),
-          ),
-        ],
+            const Positioned(
+              left: -120,
+              bottom: -100,
+              child: _GlowBlob(size: 240, color: KioskColors.surface),
+            ),
+            SafeArea(
+              top: topSafeArea,
+              bottom: bottomSafeArea,
+              child: Padding(
+                padding:
+                    padding ??
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: child,
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );

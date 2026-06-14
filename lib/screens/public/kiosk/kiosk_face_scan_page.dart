@@ -205,12 +205,13 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     final scale = kioskScale(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.white,
-        systemNavigationBarIconBrightness: Brightness.dark,
+      value: SystemUiOverlayStyle(
+        statusBarColor: _isSuccess ? Colors.white : Colors.transparent,
+        statusBarIconBrightness: _isSuccess ? Brightness.dark : Brightness.light,
+        statusBarBrightness: _isSuccess ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: _isSuccess ? Colors.white : Colors.black,
+        systemNavigationBarIconBrightness:
+            _isSuccess ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -256,7 +257,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
               child: Column(
                 children: [
                   // Only show top bar (dismiss) if NOT success
-                  _buildTopBar(),
+                  if (!_isSuccess) _buildTopBar(),
                   
                   if (!_isSuccess) ...[
                     const Spacer(),
@@ -345,27 +346,24 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           ),
         ),
         const SizedBox(width: 8),
-
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: Colors.white10,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white24, width: 1),
-        ),
-        child: Text(
-          _detectedName?.toUpperCase() ?? "AGENT",
-          style: TextStyle(
-            fontSize: 14 * scale,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF2ECC71),
-            letterSpacing: 1,
-            shadows: const [Shadow(color: Colors.black54, blurRadius: 10)],
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: Colors.white10,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white24, width: 1),
+          ),
+          child: Text(
+            _detectedName?.toUpperCase() ?? "AGENT",
+            style: TextStyle(
+              fontSize: 14 * scale,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF2ECC71),
+              letterSpacing: 1,
+              shadows: const [Shadow(color: Colors.black54, blurRadius: 10)],
+            ),
           ),
         ),
-      )
-        // Nom en Green
-        ,
       ],
     );
   }
@@ -567,7 +565,7 @@ class FaceMaskPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _ReferenceButton extends StatelessWidget {
