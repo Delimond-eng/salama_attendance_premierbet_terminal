@@ -184,7 +184,7 @@ class FaceRecognitionController extends GetxController {
         closestTemplate = template;
       }
     }
-    if (closestTemplate != null && minDistance < 0.60) {
+    if (closestTemplate != null && minDistance < 0.65) {
       return {
         'matricule': closestTemplate.matricule,
         'name': closestTemplate.name ?? 'Inconnu',
