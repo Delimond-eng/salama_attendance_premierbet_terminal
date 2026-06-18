@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '/global/controllers.dart';
+import '/kernel/services/api.dart';
 import '/kernel/services/native_face_service.dart';
 import 'kiosk_admin_faces_page.dart';
 import 'kiosk_components.dart';
@@ -34,6 +35,14 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
   void initState() {
     super.initState();
     _checkKioskStatus();
+  }
+
+  String get _client {
+    final url = Api.baseUrl.toLowerCase();
+    if (url.contains('electrocool')) return 'electrocool';
+    if (url.contains('premierbet')) return 'premierbet';
+    if (url.contains('chanimetal')) return 'chanimetal';
+    return 'default';
   }
 
   Future<void> _checkKioskStatus() async {
@@ -73,106 +82,121 @@ class _KioskAttendanceShellScreenState extends State<KioskAttendanceShellScreen>
     });
   }
 
+  Future<void> _handleBack() async {
+    if (_client == 'premierbet') {
+      _showAdminAuth(widget.onBack);
+    } else {
+      widget.onBack();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scale = kioskScale(context);
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: KioskColors.primaryDark,
-        systemNavigationBarIconBrightness: Brightness.light
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset('assets/images/attendance.jpg',
-              fit: BoxFit.cover,
-              alignment: Alignment.centerRight,
-            ),
-            Container(color: KioskColors.primary.withOpacity(0.75)),
-            SafeArea(
-              child: Column(
-                children: [
-                  const SizedBox(height: 20),
-                  const KioskBrandHeader(blueMode: true),
-                  const SizedBox(height: 20),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 10 * scale),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(32 * scale),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(32 * scale),
-                              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarColor: KioskColors.primaryDark,
+          systemNavigationBarIconBrightness: Brightness.light
+        ),
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset('assets/images/attendance.jpg',
+                fit: BoxFit.cover,
+                alignment: Alignment.centerRight,
+              ),
+              Container(color: KioskColors.primary.withOpacity(0.75)),
+              SafeArea(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 20),
+                    const KioskBrandHeader(blueMode: true),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 10 * scale),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(32 * scale),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(32 * scale),
+                                border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
+                              ),
+                              child: Obx(() {
+                                final station = tagsController.activeStation.value;
+                                final stationName = (station?['name'] ?? 'Station principale').toString();
+        
+                                return Column(
+                                  children: [
+                                    const SizedBox(height: 20),
+                                    _StationBadge(name: stationName, scale: scale),
+                                    const Spacer(),
+                                    _CircularPointerButton(
+                                      scale: scale,
+                                      onTap: () => widget.onCheckAction('pointage'),
+                                    ),
+                                    const Spacer(),
+                                    _WhitePill(scale: scale, icon: Icons.verified_rounded, label: 'Mode Terminal Actif'),
+                                    const SizedBox(height: 32),
+                                    
+                                    // BOUTONS ADMIN EN CIRCLE ET CENTRÉS
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        _CircleAdminButton(
+                                          icon: Icons.face_retouching_natural_rounded,
+                                          label: "ENROLLER",
+                                          onTap: () => _showAdminAuth(widget.onEnrollAction),
+                                          scale: scale,
+                                        ),
+                                        const SizedBox(width: 20),
+                                        _CircleAdminButton(
+                                          icon: Icons.location_on_outlined,
+                                          label: "STATION",
+                                          onTap: _handleRescanStation,
+                                          scale: scale,
+                                        ),
+                                        const SizedBox(width: 20),
+                                        _CircleAdminButton(
+                                          icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
+                                          label: _isKioskEnabled ? "QUITTER" : "ACTIVER",
+                                          color: _isKioskEnabled ? Colors.redAccent : Colors.orange,
+                                          onTap: _handleMdmToggle,
+                                          scale: scale,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 30),
+                                  ],
+                                );
+                              }),
                             ),
-                            child: Obx(() {
-                              final station = tagsController.activeStation.value;
-                              final stationName = (station?['name'] ?? 'Station principale').toString();
-
-                              return Column(
-                                children: [
-                                  const SizedBox(height: 20),
-                                  _StationBadge(name: stationName, scale: scale),
-                                  const Spacer(),
-                                  _CircularPointerButton(
-                                    scale: scale,
-                                    onTap: () => widget.onCheckAction('pointage'),
-                                  ),
-                                  const Spacer(),
-                                  _WhitePill(scale: scale, icon: Icons.verified_rounded, label: 'Mode Terminal Actif'),
-                                  const SizedBox(height: 32),
-                                  
-                                  // BOUTONS ADMIN EN CIRCLE ET CENTRÉS
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      _CircleAdminButton(
-                                        icon: Icons.face_retouching_natural_rounded,
-                                        label: "ENROLLER",
-                                        onTap: () => _showAdminAuth(widget.onEnrollAction),
-                                        scale: scale,
-                                      ),
-                                      const SizedBox(width: 20),
-                                      _CircleAdminButton(
-                                        icon: Icons.location_on_outlined,
-                                        label: "STATION",
-                                        onTap: _handleRescanStation,
-                                        scale: scale,
-                                      ),
-                                      const SizedBox(width: 20),
-                                      _CircleAdminButton(
-                                        icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
-                                        label: _isKioskEnabled ? "QUITTER" : "ACTIVER",
-                                        color: _isKioskEnabled ? Colors.redAccent : Colors.orange,
-                                        onTap: _handleMdmToggle,
-                                        scale: scale,
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 30),
-                                ],
-                              );
-                            }),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  _BackButton(onBack: widget.onBack, scale: scale),
-                ],
+                    _BackButton(onBack: _handleBack, scale: scale),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -222,7 +246,6 @@ class _CircleAdminButton extends StatelessWidget {
   }
 }
 
-// ... (Reste du code _StationBadge, _BackButton, _CircularPointerButton, _WhitePill identiques)
 class _StationBadge extends StatelessWidget {
   final String name;
   final double scale;

@@ -11,6 +11,7 @@ import 'package:camera/camera.dart';
 import '/global/controllers.dart';
 import '/kernel/controllers/face_recognition_controller.dart';
 import '/kernel/models/face.dart';
+import '/kernel/models/task.dart' as model;
 import '/kernel/services/api.dart';
 import '/kernel/services/database_helper.dart';
 import '/kernel/services/native_face_service.dart';
@@ -134,22 +135,12 @@ class HttpManager {
 
   Future<dynamic> checkPresence({required String key}) async {
     try {
-      // 1. Vérification du matricule reconnu
       String matricule = tagsController.faceResult.value;
-      if (matricule.isEmpty) {
-        EasyLoading.showError("Identité non reconnue.");
-        return "Identité non reconnue";
-      }
+      if (matricule.isEmpty) return "Identité non reconnue";
+      if (tagsController.face.value == null) return "Photo manquante";
 
-      if (tagsController.face.value == null) {
-        EasyLoading.showError("Photo manquante.");
-        return "Photo manquante";
-      }
-
-      EasyLoading.show(status: 'Pointage en cours...');
-      
       final latlng = await _getLatlng();
-      String formattedKey = key.toLowerCase().replaceAll(" ", "-");
+      String formattedKey = key == 'Confirmation' ? 'Confirmation' : key.toLowerCase().replaceAll(" ", "-");
 
       Map<String, dynamic> data = {
         "matricule": matricule,
@@ -158,8 +149,6 @@ class HttpManager {
         "key": formattedKey,
       };
 
-      dev.log("📤 PUNCH DATA: $data");
-
       var response = await Api.request(
         url: "agent.punch",
         method: "post",
@@ -167,22 +156,69 @@ class HttpManager {
         files: {'photo': File(tagsController.face.value!.path)},
       );
 
-      if (response != null && response is Map) {
-        if (response.containsKey("errors") || response["status"] == "error") {
-          String msg = _extractErrorMessage(response);
-          EasyLoading.showError(msg);
-          return msg;
-        }
-        EasyLoading.showSuccess("Pointage validé !");
+      if (response != null && response is Map && response["status"] == "success") {
         return "success";
       }
-      
-      EasyLoading.showError("Erreur lors du pointage.");
-      return "error";
+      return _extractErrorMessage(response);
     } catch (e) {
-      dev.log("❌ PUNCH ERROR: $e");
-      EasyLoading.showError("Échec de la connexion.");
       return "error";
+    }
+  }
+
+  Future<List<model.Task>> getTasks(int? stationId, String matricule) async {
+    try {
+      final response = await Api.request(
+        url: "terminal/tasks",
+        method: "get",
+        body: {"station_id": stationId, "matricule": matricule},
+      );
+      
+      if (response != null) {
+        var data;
+        if (response['result'] != null) data = response['result'];
+        else if (response['data'] != null) data = response['data'];
+        else if (response['tasks'] != null) data = response['tasks'];
+        else if (response is List) data = response;
+
+        if (data is List) {
+          return data.map((t) => model.Task.fromJson(t as Map<String, dynamic>)).toList();
+        }
+      }
+    } catch (e) {
+      dev.log("❌ Error parsing tasks: $e");
+    }
+    return [];
+  }
+
+  Future<bool> completeTask({
+    required int taskId,
+    required String matricule,
+    List<int>? subtaskIds,
+    List<File>? images,
+    String? note,
+  }) async {
+    try {
+      Map<String, File> files = {};
+      if (images != null) {
+        for (int i = 0; i < images.length; i++) {
+          files['image_$i'] = images[i];
+        }
+      }
+
+      final response = await Api.request(
+        url: "terminal/tasks/complete",
+        method: "post",
+        body: {
+          "task_id": taskId,
+          "matricule": matricule,
+          "subtasks": jsonEncode(subtaskIds ?? []),
+          "note": note,
+        },
+        files: files,
+      );
+      return response != null && response['status'] == 'success';
+    } catch (e) {
+      return false;
     }
   }
 
@@ -190,25 +226,13 @@ class HttpManager {
     try {
       var stationId = tagsController.activeStation.value?['id'];
       String? latlng;
-      if (getPosition) {
-        latlng = await _getLatlng();
-      }
+      if (getPosition) latlng = await _getLatlng();
 
-      // On n'envoie latlng que s'il est récupéré (pour éviter les updates non désirés)
       var data = {"station_id": stationId};
-      if (latlng != null) {
-        data["latlng"] = latlng;
-      }
+      if (latlng != null) data["latlng"] = latlng;
 
       var response = await Api.request(url: "station.scan", method: "post", body: data);
-      
-      if (response != null && response is Map) {
-        if (response.containsKey("errors")) {
-          EasyLoading.showError(_extractErrorMessage(response));
-          return null;
-        }
-        return "success";
-      }
+      if (response != null && response is Map && response["status"] == "success") return "success";
       return _extractErrorMessage(response);
     } catch (e) {
       return "Erreur station";

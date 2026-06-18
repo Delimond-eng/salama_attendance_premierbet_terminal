@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class Api {
-  //static String baseUrl = 'http://salama.uco.rod.mybluehost.me/api';
+  static String baseUrl = 'https://premierbet.salama-drc.com/api';
   //static String baseUrl = 'https://mamba.salama-drc.com/api';
-  static String baseUrl = 'https://chanimetal.salama-drc.com/api';
+  //static String baseUrl = 'https://chanimetal.salama-drc.com/api';
 
   static Future<dynamic> request({
     required String method,
@@ -15,10 +15,15 @@ class Api {
     Map<String, String>? headers,
     Map<String, File>? files,
   }) async {
-    final fullUrl = Uri.parse('$baseUrl/$url');
+    Uri fullUrl = Uri.parse('$baseUrl/$url');
+    
+    // Handle GET parameters
+    if (method.toLowerCase() == 'get' && body != null) {
+      fullUrl = fullUrl.replace(queryParameters: body.map((key, value) => MapEntry(key, value?.toString() ?? "")));
+    }
+
     const apiKey = "16jA/0l6TBmFoPk64MnrmLzVp2MRL2Do0yD5N6K4e54=";
 
-    // Tentative de contournement du JavaScript Challenge en simulant le cookie requis
     headers = {
       'Content-Type': 'application/json',
       'X-API-KEY': apiKey,
@@ -89,17 +94,13 @@ class Api {
         print("API Response ($url): ${response.body}");
       }
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      // Return body regardless of status code to let HttpManager handle errors/messages
+      try {
         return jsonDecode(response.body);
-      } else {
-        // En cas d'erreur 409 persistante, on affiche un log clair
-        if (response.body.contains("humans_21909")) {
-          print(
-            "❌ ALERTE: Le pare-feu BitNinja bloque toujours l'API. Contactez l'hébergeur.",
-          );
-        }
+      } catch (_) {
         return null;
       }
+
     } catch (e) {
       if (kDebugMode) {
         print('Exception API ($url): $e');

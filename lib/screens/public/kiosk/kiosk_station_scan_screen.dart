@@ -1,12 +1,11 @@
 import 'dart:convert';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:terminal/kernel/services/native_face_service.dart';
-
+import '/kernel/services/api.dart';
+import '/kernel/services/native_face_service.dart';
 import '/global/controllers.dart';
 import '/global/store.dart';
 import '/kernel/services/http_manager.dart';
@@ -31,6 +30,14 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> with Wi
   bool _isPermissionGranted = false;
   bool _isKioskEnabled = false;
 
+  String get _client {
+    final url = Api.baseUrl.toLowerCase();
+    if (url.contains('electrocool')) return 'electrocool';
+    if (url.contains('premierbet')) return 'premierbet';
+    if (url.contains('chanimetal')) return 'chanimetal';
+    return 'default';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -39,20 +46,21 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> with Wi
     _checkKioskStatus();
   }
 
-
-
   Future<void> _checkKioskStatus() async {
     final enabled = await _nativeService.isMdmKioskEnabled();
     if (mounted) setState(() => _isKioskEnabled = enabled);
   }
 
-
-  Future<void> _showAdminAuth(VoidCallback onAuthenticated) async {
+  Future<bool> _authenticate() async {
     final authenticated = await Get.dialog<bool>(
       const KioskAdminPasswordDialog(),
       barrierDismissible: true,
     );
-    if (authenticated == true) onAuthenticated();
+    return authenticated == true;
+  }
+
+  Future<void> _showAdminAuth(VoidCallback onAuthenticated) async {
+    if (await _authenticate()) onAuthenticated();
   }
 
   Future<void> _handleMdmToggle() async {
@@ -165,79 +173,93 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> with Wi
     final scale = kioskScale(context);
     final frameSize = 250 * scale;
 
-    return KioskScaffold(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Align(alignment: Alignment.center, child: KioskBrandHeader()),
-          SizedBox(height: 28 * scale),
-          Text("Connexion de la station", textAlign: TextAlign.center, style: kioskTitle(context).copyWith(fontSize: 30 * scale)),
-          SizedBox(height: 8 * scale),
-          Text("Cadrez le QR code de votre station.", textAlign: TextAlign.center, style: kioskBody(context)),
-          const Spacer(),
-          Center(
-            child: Obx(() {
-              // OPTIMISATION: On affiche le scanner si on est sur la page 1 OU si on est en mode "LatReq" (via Get.to)
-              final isPageActive = tagsController.currentPageIndex.value == 1;
-              final isStandalone = widget.isLatReq;
-
-              if (!isPageActive && !isStandalone) return const SizedBox.shrink();
-              if (!_isPermissionGranted) return const Center(child: CircularProgressIndicator());
-
-              return Container(
-                width: 380 * scale, height: 380 * scale,
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(22 * scale)),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22 * scale),
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: SizedBox(
-                          width: frameSize, height: frameSize,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(28 * scale),
-                            child: MobileScanner(
-                              controller: controller,
-                              onDetect: _onDetect,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        
+        if (_client == 'premierbet') {
+          final isAuth = await _authenticate();
+          if (isAuth) {
+            Get.back();
+          }
+        } else {
+          Get.back();
+        }
+      },
+      child: KioskScaffold(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Align(alignment: Alignment.center, child: KioskBrandHeader()),
+            SizedBox(height: 28 * scale),
+            Text("Connexion de la station", textAlign: TextAlign.center, style: kioskTitle(context).copyWith(fontSize: 30 * scale)),
+            SizedBox(height: 8 * scale),
+            Text("Cadrez le QR code de votre station.", textAlign: TextAlign.center, style: kioskBody(context)),
+            const Spacer(),
+            Center(
+              child: Obx(() {
+                final isPageActive = tagsController.currentPageIndex.value == 1;
+                final isStandalone = widget.isLatReq;
+      
+                if (!isPageActive && !isStandalone) return const SizedBox.shrink();
+                if (!_isPermissionGranted) return const Center(child: CircularProgressIndicator());
+      
+                return Container(
+                  width: 380 * scale, height: 380 * scale,
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(22 * scale)),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22 * scale),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: SizedBox(
+                            width: frameSize, height: frameSize,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(28 * scale),
+                              child: MobileScanner(
+                                controller: controller,
+                                onDetect: _onDetect,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Center(child: KioskScanFrame(size: frameSize)),
-                    ],
+                        Center(child: KioskScanFrame(size: frameSize)),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            }),
-          ),
-          const Spacer(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ScannerControl(
-                icon: _isLight ? Icons.flash_off_rounded : Icons.flash_on_rounded,
-                onTap: () {
-                  controller.toggleTorch();
-                  setState(() => _isLight = !_isLight);
-                },
-              ),
-              if (_hasScanned) ...[
-                SizedBox(width: 12 * scale),
-                ScannerControl(icon: Icons.restart_alt_rounded, onTap: _restartScan),
-              ],
-              if(_isKioskEnabled)...[
-                SizedBox(width: 12 * scale),
+                );
+              }),
+            ),
+            const Spacer(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
                 ScannerControl(
-                  icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
-                  onTap: _handleMdmToggle,
+                  icon: _isLight ? Icons.flash_off_rounded : Icons.flash_on_rounded,
+                  onTap: () {
+                    controller.toggleTorch();
+                    setState(() => _isLight = !_isLight);
+                  },
                 ),
-              ]
-
-            ],
-          ),
-          SizedBox(height: 10 * scale),
-          Text("Astuce: tenez le code à 20-30 cm de la caméra.", textAlign: TextAlign.center, style: kioskCaption(context)),
-        ],
+                if (_hasScanned) ...[
+                  SizedBox(width: 12 * scale),
+                  ScannerControl(icon: Icons.restart_alt_rounded, onTap: _restartScan),
+                ],
+                if(_isKioskEnabled)...[
+                  SizedBox(width: 12 * scale),
+                  ScannerControl(
+                    icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
+                    onTap: _handleMdmToggle,
+                  ),
+                ]
+      
+              ],
+            ),
+            SizedBox(height: 10 * scale),
+            Text("Astuce: tenez le code à 20-30 cm de la caméra.", textAlign: TextAlign.center, style: kioskCaption(context)),
+          ],
+        ),
       ),
     );
   }

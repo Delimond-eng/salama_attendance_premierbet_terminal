@@ -9,8 +9,10 @@ import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '/global/controllers.dart';
+import '/kernel/services/api.dart';
 import '/kernel/services/http_manager.dart';
 import 'kiosk_components.dart';
+import 'kiosk_task_modal.dart';
 
 class KioskFaceScanPage extends StatefulWidget {
   const KioskFaceScanPage({
@@ -35,13 +37,24 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   bool _isSuccess = false;
   bool _isFaceDetected = false;
   bool _showFlash = false;
-  String _hint = "Positionnez votre visage dans le cadre";
+  int _failedAttempts = 0;
+  bool _isBlinking = false;
+  bool _isConfirmingClosure = false;
 
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
-      performanceMode: FaceDetectorMode.fast,
+      performanceMode: FaceDetectorMode.accurate,
+      enableClassification: true,
     ),
   );
+
+  String get _client {
+    final url = Api.baseUrl.toLowerCase();
+    if (url.contains('electrocool')) return 'electrocool';
+    if (url.contains('premierbet')) return 'premierbet';
+    if (url.contains('chanimetal')) return 'chanimetal';
+    return 'default';
+  }
 
   @override
   void initState() {
@@ -93,6 +106,21 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         setState(() {
           _isFaceDetected = faces.isNotEmpty;
         });
+
+        if (faces.isNotEmpty) {
+          final face = faces.first;
+          if (_client != 'premierbet' && _failedAttempts < 2 && !_isConfirmingClosure) {
+            final leftEye = face.leftEyeOpenProbability ?? 1.0;
+            final rightEye = face.rightEyeOpenProbability ?? 1.0;
+
+            if (leftEye < 0.2 && rightEye < 0.2) {
+              _isBlinking = true;
+            } else if (_isBlinking && leftEye > 0.6 && rightEye > 0.6) {
+              _isBlinking = false;
+              _performCaptureAndVerify();
+            }
+          }
+        }
       }
     } catch (e) {
       debugPrint("Error: $e");
@@ -104,11 +132,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   Future<void> _performCaptureAndVerify() async {
     if (_controller == null || _isCapturing) return;
 
-    if (mounted) {
-      setState(() {
-        _isCapturing = true;
-      });
-    }
+    if (mounted) setState(() => _isCapturing = true);
 
     if (mounted) {
       setState(() => _showFlash = true);
@@ -131,10 +155,16 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             _detectedName = res['name']?.toString();
             _capturedImage = file;
             _isSuccess = true;
+            _failedAttempts = 0;
           });
         }
+        
+        if (_isConfirmingClosure) {
+          _submit('maintenance-out');
+        }
       } else {
-        EasyLoading.showInfo("Visage non reconnu.");
+        _failedAttempts++;
+        EasyLoading.showInfo("Identité non reconnue.");
         _startLiveStream();
       }
     } catch (e) {
@@ -167,23 +197,55 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     }
   }
 
-  Future<void> _submit(String type) async {
+  Future<void> _submit(String type, {bool openTasks = false}) async {
     if (_detectedMatricule == null) return;
-    EasyLoading.show(status: 'Pointage...');
+    
+    EasyLoading.show(status: 'Envoi...');
     tagsController.attendanceType.value = type;
     tagsController.faceResult.value = _detectedMatricule!;
     tagsController.face.value = _capturedImage;
+    
     final res = await HttpManager().checkPresence(key: type);
     EasyLoading.dismiss();
-    if (res == 'success') {
-      Get.back();
-      widget.onSuccess();
+    
+    bool canProceed = res == 'success';
+    
+    // GESTION SPECIALE : Si maintenance déjà ouverte, on force l'accès aux tâches
+    if (openTasks && res.toString().toLowerCase().contains("ouverte")) {
+      canProceed = true;
+    }
+
+    if (canProceed) {
+      if (openTasks) {
+        final result = await Get.bottomSheet(
+          KioskTaskModal(matricule: _detectedMatricule!, capturedImage: _capturedImage),
+          isScrollControlled: true,
+          barrierColor: Colors.black54,
+        );
+        
+        if (result == 'confirm-closure') {
+          setState(() {
+            _isConfirmingClosure = true;
+            _isSuccess = false;
+            _capturedImage = null;
+            _detectedMatricule = null;
+            _detectedName = null;
+          });
+          _startLiveStream();
+        }
+      } else {
+        Get.back();
+        widget.onSuccess();
+      }
+    } else if (res != null) {
+      EasyLoading.showError(res.toString());
     }
   }
 
   void _resetCamera() {
     setState(() {
       _isSuccess = false;
+      _isConfirmingClosure = false;
       _capturedImage = null;
       _detectedMatricule = null;
       _detectedName = null;
@@ -207,17 +269,12 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: _isSuccess ? Colors.white : Colors.transparent,
-        statusBarIconBrightness: _isSuccess ? Brightness.dark : Brightness.light,
-        statusBarBrightness: _isSuccess ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: _isSuccess ? Colors.white : Colors.black,
-        systemNavigationBarIconBrightness:
-            _isSuccess ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            // 1. Background (Camera Preview or Captured Image)
             Positioned.fill(
               child: _isSuccess && _capturedImage != null
                   ? Image.file(File(_capturedImage!.path), fit: BoxFit.cover)
@@ -235,41 +292,35 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                       : Container(color: Colors.black)),
             ),
 
-            // 2. Dim effect if Success
             if (_isSuccess)
               Positioned.fill(
-                child: Container(
-                  color: Colors.black.withOpacity(0.65),
-                ),
+                child: Container(color: Colors.black.withOpacity(0.65)),
               ),
 
-            // 3. Face Mask Overlay
+            // Masque Cyber Géométrique
             if (!_isSuccess)
               Positioned.fill(
                 child: CustomPaint(
-                  painter: FaceMaskPainter(),
+                  painter: FaceMaskOverlayPainter(isFaceDetected: _isFaceDetected),
                 ),
               ),
 
-            // 4. UI Layer
             SafeArea(
               bottom: false,
               child: Column(
                 children: [
-                  // Only show top bar (dismiss) if NOT success
                   if (!_isSuccess) _buildTopBar(),
                   
                   if (!_isSuccess) ...[
                     const Spacer(),
                     _buildHint(scale),
                     SizedBox(height: 20 * scale),
-                    _buildCaptureButton(scale),
+                    if (_client == 'premierbet' || _failedAttempts >= 2 || _isConfirmingClosure)
+                      _buildCaptureButton(scale),
                     SizedBox(height: 40 * scale),
                   ] else ...[
-                    const Spacer(flex: 2),
-                    _buildCircularAvatar(scale),
-                    const SizedBox(height: 24),
-                    _buildUserInfoRow(scale),
+                    const Spacer(flex: 1),
+                    _buildUserInfoHeader(scale),
                     const Spacer(flex: 1),
                     _buildGlassActionPanel(scale),
                   ],
@@ -303,65 +354,37 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     );
   }
 
-  Widget _buildCircularAvatar(double scale) {
-    return Container(
-      width: 170 * scale,
-      height: 170 * scale,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFF2ECC71), width: 6),
-        boxShadow: const [
-          BoxShadow(color: Colors.black54, blurRadius: 30, spreadRadius: 2),
-        ],
-      ),
-      child: ClipOval(
-        child: Image.file(
-          File(_capturedImage!.path),
-          fit: BoxFit.cover,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUserInfoRow(double scale) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildUserInfoHeader(double scale) {
+    return Column(
       children: [
-        // Badge matricule
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          width: 140 * scale,
+          height: 140 * scale,
           decoration: BoxDecoration(
-            color: Colors.white10,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white24, width: 1),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFF2ECC71), width: 4),
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 20)],
           ),
-          child: Text(
-            _detectedMatricule ?? "",
-            style: TextStyle(
-              fontSize: 14 * scale,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: 1,
-            ),
+          child: ClipOval(
+            child: Image.file(File(_capturedImage!.path), fit: BoxFit.cover),
           ),
         ),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.white10,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white24, width: 1),
+        const SizedBox(height: 16),
+        Text(
+          _detectedName?.toUpperCase() ?? "AGENT",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20 * scale,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1,
           ),
-          child: Text(
-            _detectedName?.toUpperCase() ?? "AGENT",
-            style: TextStyle(
-              fontSize: 14 * scale,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF2ECC71),
-              letterSpacing: 1,
-              shadows: const [Shadow(color: Colors.black54, blurRadius: 10)],
-            ),
+        ),
+        Text(
+          _detectedMatricule ?? "",
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 14 * scale,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
@@ -370,7 +393,8 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
 
   Widget _buildGlassActionPanel(double scale) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 35, 20, 50),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 30, 16, 20),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
@@ -379,43 +403,62 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            "SÉLECTIONNEZ UNE ACTION",
+            "CHOISISSEZ VOTRE OPÉRATION",
             style: TextStyle(
-              fontSize: 13 * scale,
-              color: Colors.grey,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 2,
+              fontSize: 12 * scale,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
             ),
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 25),
           _buildActionGrid(context, scale),
-          const SizedBox(height: 24),
-          TextButton.icon(
-            onPressed: _resetCamera,
-            icon: const Icon(Icons.refresh, color: Colors.blue, size: 18),
-            label: Text(
-              "Recommencer le scan",
-              style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w500, fontSize: 13 * scale),
+          const SizedBox(height: 15),
+          if (_client == 'chanimetal' || _client == 'premierbet')
+            Center(
+              child: TextButton.icon(
+                onPressed: _resetCamera,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text("RELANCER LE SCAN"),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.blueGrey,
+                  textStyle: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12 * scale,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
   Widget _buildHint(double scale) {
+    String? msg;
+    if (_isConfirmingClosure) {
+      msg = "Confirmez votre identité pour clôturer";
+    } else if (!_isFaceDetected) {
+      msg = "Positionnez votre visage";
+    } else if (_client != 'premierbet' && _failedAttempts < 2) {
+      msg = "Clignez des yeux pour valider";
+    } else {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.black54,
+        color: _isConfirmingClosure ? Colors.orange : Colors.black54,
         borderRadius: BorderRadius.circular(30),
       ),
       child: Text(
-        _isFaceDetected ? "Visage détecté" : _hint,
+        msg,
         style: TextStyle(
           color: Colors.white,
           fontSize: 14 * scale,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -455,11 +498,11 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                 const Icon(Icons.auto_awesome, color: Colors.white),
               const SizedBox(width: 12),
               Text(
-                _isCapturing ? "Analyse..." : "Scanner le visage",
+                _isCapturing ? "ANALYSE..." : (_isConfirmingClosure ? "CONFIRMER LA CLÔTURE" : "SCANNER LE VISAGE"),
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 15 * scale,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w800,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -471,136 +514,195 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   }
 
   Widget _buildActionGrid(BuildContext context, double scale) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            _ReferenceButton(
-              icon: Icons.login_rounded,
-              label: 'Entrée',
-              color: const Color(0xFF10B981),
-              secondaryColor: const Color(0xFF059669),
-              onTap: () => _submit('check-in'),
-            ),
-            _ReferenceButton(
-              icon: Icons.logout_rounded,
-              label: 'Départ',
-              color: const Color(0xFFEF4444),
-              secondaryColor: const Color(0xFFDC2626),
-              onTap: () => _submit('check-out'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+    List<Widget> rows = [];
+
+    // Ligne 1 : Entrée / Sortie
+    rows.add(
+      Row(
+        children: [
+          _ReferenceButton(
+            icon: Icons.login_rounded,
+            label: 'Entrée',
+            color: const Color(0xFF10B981),
+            secondaryColor: const Color(0xFF34D399),
+            onTap: () => _submit('check-in'),
+          ),
+          _ReferenceButton(
+            icon: Icons.logout_rounded,
+            label: 'Départ',
+            color: const Color(0xFFEF4444),
+            secondaryColor: const Color(0xFFF87171),
+            onTap: () => _submit('check-out'),
+          ),
+        ],
+      ),
+    );
+
+    rows.add(const SizedBox(height: 12));
+
+    // Ligne 2 : Maintenance / Tâches
+    if (_client == 'electrocool') {
+      rows.add(
         Row(
           children: [
             _ReferenceButton(
               icon: Icons.build_circle_rounded,
               label: 'Maint. In',
               color: const Color(0xFF3B82F6),
-              secondaryColor: const Color(0xFF2563EB),
+              secondaryColor: const Color(0xFF60A5FA),
               onTap: () => _submit('maintenance-in'),
             ),
             _ReferenceButton(
               icon: Icons.build_rounded,
               label: 'Maint. Out',
               color: const Color(0xFFF59E0B),
-              secondaryColor: const Color(0xFFD97706),
+              secondaryColor: const Color(0xFFFBBF24),
               onTap: () => _submit('maintenance-out'),
             ),
           ],
         ),
-      ],
-    );
+      );
+      rows.add(const SizedBox(height: 12));
+      rows.add(
+        Row(
+          children: [
+            _ReferenceButton(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Confirmation',
+              color: const Color(0xFF6B7280),
+              secondaryColor: const Color(0xFF9CA3AF),
+              onTap: () => _submit('Confirmation'),
+            ),
+            _ReferenceButton(
+              icon: Icons.refresh_rounded,
+              label: 'Relancer',
+              color: const Color(0xFF4D5B78),
+              secondaryColor: const Color(0xFF8A96AE),
+              onTap: _resetCamera,
+            ),
+          ],
+        ),
+      );
+    } else if (_client == 'chanimetal') {
+      rows.add(
+        Row(
+          children: [
+            _ReferenceButton(
+              icon: Icons.assignment_rounded,
+              label: 'Maint. & Tâches',
+              color: const Color(0xFF8B5CF6),
+              secondaryColor: const Color(0xFFA78BFA),
+              onTap: () => _submit('maintenance-in', openTasks: true),
+            ),
+            _ReferenceButton(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Confirmation',
+              color: const Color(0xFF6B7280),
+              secondaryColor: const Color(0xFF9CA3AF),
+              onTap: () => _submit('Confirmation'),
+            ),
+          ],
+        ),
+      );
+    } else if (_client == 'premierbet') {
+      rows.add(
+        Row(
+          children: [
+            _ReferenceButton(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Confirmation',
+              color: const Color(0xFF6B7280),
+              secondaryColor: const Color(0xFF9CA3AF),
+              onTap: () => _submit('Confirmation'),
+            ),
+            const Expanded(child: SizedBox()),
+          ],
+        ),
+      );
+    }
+
+    return Column(children: rows);
   }
 }
 
-class FaceMaskPainter extends CustomPainter {
+class FaceMaskOverlayPainter extends CustomPainter {
+  final bool isFaceDetected;
+
+  FaceMaskOverlayPainter({required this.isFaceDetected});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.black.withOpacity(0.55)
-      ..style = PaintingStyle.fill;
+    final paint = Paint()..color = Colors.black.withOpacity(0.55);
 
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final ovalWidth = size.width * 0.72;
     final ovalHeight = ovalWidth * 1.35;
     final center = Offset(size.width / 2, size.height * 0.42);
-    final ovalRect = Rect.fromCenter(
-      center: center,
-      width: ovalWidth,
-      height: ovalHeight,
-    );
+    final ovalRect = Rect.fromCenter(center: center, width: ovalWidth, height: ovalHeight);
 
+    // 1. Découpe ovale
     canvas.drawPath(
-      Path.combine(
-        PathOperation.difference,
-        Path()..addRect(rect),
-        Path()..addOval(ovalRect),
-      ),
+      Path.combine(PathOperation.difference, Path()..addRect(rect), Path()..addOval(ovalRect)),
       paint,
     );
 
+    // 2. Bordure lumineuse
     final borderPaint = Paint()
-      ..color = Colors.white.withOpacity(0.9)
+      ..color = isFaceDetected ? const Color(0xFF2ECC71) : Colors.white.withOpacity(0.25)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
-
+    
     _drawDashedOval(canvas, ovalRect, borderPaint);
 
-    // Draw symmetry lines (Cross)
-    final linePaint = Paint()
-      ..color = Colors.white.withOpacity(0.25)
+    // 3. Maillage Cyber Géométrique (Nodes & Mesh)
+    final meshColor = isFaceDetected ? const Color(0xFF2ECC71) : Colors.white.withOpacity(0.18);
+    final meshPaint = Paint()
+      ..color = meshColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
+      ..strokeWidth = 0.8;
 
-    // Vertical line
-    canvas.drawLine(
-      Offset(center.dx, ovalRect.top),
-      Offset(center.dx, ovalRect.bottom),
-      linePaint,
-    );
+    _drawFaceMesh(canvas, center, ovalWidth, ovalHeight, meshPaint);
+  }
 
-    // Horizontal line
-    canvas.drawLine(
-      Offset(ovalRect.left, center.dy),
-      Offset(ovalRect.right, center.dy),
-      linePaint,
-    );
+  void _drawFaceMesh(Canvas canvas, Offset center, double width, double height, Paint paint) {
+    final double w = width * 0.5;
+    final double h = height * 0.5;
 
-    // Draw Scale (Ladder/Graduation)
-    final ladderPaint = Paint()
-      ..color = Colors.white.withOpacity(0.4)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+    // Définition des points faciaux (Structure cyber inspirée de l'image)
+    final points = [
+      center.translate(0, -h * 0.85),    // 0: Front haut
+      center.translate(-w * 0.4, -h * 0.65), // 1: Front gauche
+      center.translate(w * 0.4, -h * 0.65),  // 2: Front droit
+      center.translate(-w * 0.7, -h * 0.15), // 3: Tempe gauche
+      center.translate(w * 0.7, -h * 0.15),  // 4: Tempe droite
+      center.translate(-w * 0.5, h * 0.3),   // 5: Pommette gauche
+      center.translate(w * 0.5, h * 0.3),    // 6: Pommette droite
+      center.translate(0, h * 0.1),          // 7: Nez centre
+      center.translate(0, h * 0.9),          // 8: Menton
+      center.translate(-w * 0.35, h * 0.75), // 9: Machoire gauche
+      center.translate(w * 0.35, h * 0.75),  // 10: Machoire droite
+      center.translate(-w * 0.2, h * 0.45),  // 11: Bouche gauche
+      center.translate(w * 0.2, h * 0.45),   // 12: Bouche droite
+    ];
 
-    const double stepSize = 12.0;
-    const double tickWidth = 8.0;
-    
-    // Vertical Ladder
-    double currentY = ovalRect.top + stepSize;
-    while (currentY < ovalRect.bottom) {
-      if ((currentY - center.dy).abs() > 5) { // Skip center
-        canvas.drawLine(
-          Offset(center.dx - tickWidth / 2, currentY),
-          Offset(center.dx + tickWidth / 2, currentY),
-          ladderPaint,
-        );
-      }
-      currentY += stepSize;
+    // Connexions triangulées
+    final List<List<int>> connections = [
+      [0, 1], [0, 2], [1, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7], [6, 7],
+      [5, 9], [6, 10], [9, 8], [10, 8], [11, 12], [7, 11], [7, 12], [11, 8], [12, 8],
+      [3, 1], [4, 2], [0, 7], [3, 7], [4, 7], [5, 11], [6, 12]
+    ];
+
+    for (var conn in connections) {
+      canvas.drawLine(points[conn[0]], points[conn[1]], paint);
     }
 
-    // Horizontal Ladder
-    double currentX = ovalRect.left + stepSize;
-    while (currentX < ovalRect.right) {
-       if ((currentX - center.dx).abs() > 5) { // Skip center
-        canvas.drawLine(
-          Offset(currentX, center.dy - tickWidth / 2),
-          Offset(currentX, center.dy + tickWidth / 2),
-          ladderPaint,
-        );
-      }
-      currentX += stepSize;
+    // Nodes (Points d'ancrage)
+    final dotPaint = Paint()
+      ..color = paint.color.withOpacity(isFaceDetected ? 1.0 : 0.4)
+      ..style = PaintingStyle.fill;
+
+    for (var p in points) {
+      canvas.drawRect(Rect.fromCenter(center: p, width: 3, height: 3), dotPaint);
     }
   }
 
@@ -611,17 +713,15 @@ class FaceMaskPainter extends CustomPainter {
     for (final pathMetric in path.computeMetrics()) {
       double distance = 0;
       while (distance < pathMetric.length) {
-        canvas.drawPath(
-          pathMetric.extractPath(distance, distance + dashWidth),
-          paint,
-        );
+        canvas.drawPath(pathMetric.extractPath(distance, distance + dashWidth), paint);
         distance += dashWidth + dashSpace;
       }
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant FaceMaskOverlayPainter oldDelegate) =>
+      oldDelegate.isFaceDetected != isFaceDetected;
 }
 
 class _ReferenceButton extends StatelessWidget {
@@ -644,39 +744,48 @@ class _ReferenceButton extends StatelessWidget {
     final scale = kioskScale(context);
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 7.0),
+        padding: const EdgeInsets.symmetric(horizontal: 6.0),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24 * scale),
           child: Container(
-            height: 70 * scale,
+            height: 105 * scale,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [color, secondaryColor],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(24 * scale),
               boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 5),
-                ),
+                BoxShadow(color: color.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
               ],
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                Icon(icon, color: Colors.white, size: 28 * scale),
-                const SizedBox(height: 6),
-                Text(
-                  label.toUpperCase(),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11 * scale,
-                    letterSpacing: 1.2,
+                Positioned(
+                  right: -10 * scale,
+                  top: -10 * scale,
+                  child: Icon(icon, size: 80 * scale, color: Colors.white.withOpacity(0.12)),
+                ),
+                Padding(
+                  padding: EdgeInsets.all(16 * scale),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                        child: Icon(icon, color: Colors.white, size: 22 * scale),
+                      ),
+                      const Spacer(),
+                      Text(
+                        label.toUpperCase(),
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11 * scale, letterSpacing: 1),
+                      ),
+                    ],
                   ),
                 ),
               ],
