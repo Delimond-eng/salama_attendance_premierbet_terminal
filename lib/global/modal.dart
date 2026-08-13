@@ -1,6 +1,5 @@
 import '/constants/styles.dart';
 import '/themes/app_theme.dart';
-import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:get/get.dart';
@@ -185,38 +184,31 @@ class Btn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DottedBorder(
-      color: primaryMaterialColor.shade200,
-      radius: const Radius.circular(12.0),
-      strokeWidth: 1,
-      borderType: BorderType.RRect,
-      dashPattern: const [6, 3],
-      child: ClipRRect(
-        borderRadius: const BorderRadius.all(Radius.circular(12)),
-        child: Container(
-          height: 50,
-          width: double.infinity,
-          decoration: BoxDecoration(color: color ?? primaryMaterialColor),
-          child: Material(
+    return ClipRRect(
+      borderRadius: const BorderRadius.all(Radius.circular(12)),
+      child: Container(
+        height: 50,
+        width: double.infinity,
+        decoration: BoxDecoration(color: color ?? primaryMaterialColor),
+        child: Material(
+          borderRadius: BorderRadius.circular(12.0),
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => onPressed!(),
             borderRadius: BorderRadius.circular(12.0),
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => onPressed!(),
-              borderRadius: BorderRadius.circular(12.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    label!,
-                    style: TextStyle(
-                      color: labelColor ?? Colors.white,
-                      fontSize: 12.0,
-                      fontWeight: FontWeight.w500,
-                    ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label!,
+                  style: TextStyle(
+                    color: labelColor ?? Colors.white,
+                    fontSize: 12.0,
+                    fontWeight: FontWeight.w500,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

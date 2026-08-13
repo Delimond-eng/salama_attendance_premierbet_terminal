@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,15 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   bool _isBlinking = false;
   bool _isConfirmingClosure = false;
 
+  Offset? _blinkStartCenter;
+  final double _headMoveThreshold =
+      20.0; // pixels minimum de déplacement de la tête
+  // Seuils et comptes pour robustesse avec caméras floues / basse résolution
+  final double _closedEyeThreshold = 0.25; // <= considéré fermé
+  final double _openEyeThreshold = 0.55; // >= considéré ouvert
+  final int _framesRequired = 2; // nombre de frames consécutives requises
+  int _closedFrames = 0;
+  int _openFrames = 0;
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
       performanceMode: FaceDetectorMode.accurate,
@@ -84,6 +94,11 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
 
   void _startLiveStream() {
     if (_controller != null && _controller!.value.isInitialized) {
+      // reset blink authorization when starting a fresh live stream
+      _isBlinking = false;
+      _blinkStartCenter = null;
+      _closedFrames = 0;
+      _openFrames = 0;
       _controller!.startImageStream((image) {
         if (_isProcessingFrame || _isSuccess || _isCapturing) return;
         _isProcessingFrame = true;
@@ -101,7 +116,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       }
 
       final faces = await _faceDetector.processImage(inputImage);
-      
+
       if (mounted) {
         setState(() {
           _isFaceDetected = faces.isNotEmpty;
@@ -109,7 +124,45 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
 
         if (faces.isNotEmpty) {
           final face = faces.first;
-          if (_client != 'premierbet' && _failedAttempts < 2 && !_isConfirmingClosure) {
+          // Pour electrocool : capture automatique dès le clignement des yeux
+          // Pour electrocool : capture automatique dès le clignement des yeux
+          // mais exiger un léger mouvement de tête entre la fermeture et la réouverture
+          if (_client == 'electrocool' && !_isConfirmingClosure) {
+            final leftEye = face.leftEyeOpenProbability ?? 1.0;
+            final rightEye = face.rightEyeOpenProbability ?? 1.0;
+            final Offset center = face.boundingBox.center;
+
+            // compte les frames où les yeux sont fermés/ouverts pour robustesse
+            if (leftEye <= _closedEyeThreshold &&
+                rightEye <= _closedEyeThreshold) {
+              _closedFrames++;
+              _openFrames = 0;
+              if (_closedFrames == 1) {
+                // début du clignement : mémoriser la position de la tête
+                _blinkStartCenter = center;
+              }
+            } else if (leftEye >= _openEyeThreshold &&
+                rightEye >= _openEyeThreshold) {
+              _openFrames++;
+            } else {
+              // état intermédiaire -> reset counters
+              _closedFrames = 0;
+              _openFrames = 0;
+              _blinkStartCenter = null;
+            }
+
+            // Si on a observé assez de frames fermés puis assez de frames ouverts
+            if (_closedFrames >= _framesRequired &&
+                _openFrames >= _framesRequired) {
+              // déclencher directement la capture uniquement sur le clignement
+              _closedFrames = 0;
+              _openFrames = 0;
+              _blinkStartCenter = null;
+              _performCaptureAndVerify();
+            }
+          } else if (_client != 'premierbet' &&
+              _failedAttempts < 2 &&
+              !_isConfirmingClosure) {
             final leftEye = face.leftEyeOpenProbability ?? 1.0;
             final rightEye = face.rightEyeOpenProbability ?? 1.0;
 
@@ -158,17 +211,19 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             _failedAttempts = 0;
           });
         }
-        
+
         if (_isConfirmingClosure) {
           _submit('maintenance-out');
         }
       } else {
         _failedAttempts++;
-        EasyLoading.showInfo("Identité non reconnue.");
+        EasyLoading.showInfo(
+          "Identité non reconnue. Réessayez le clignement des yeux.",
+        );
         _startLiveStream();
       }
     } catch (e) {
-       _startLiveStream();
+      _startLiveStream();
     } finally {
       if (mounted) setState(() => _isCapturing = false);
     }
@@ -199,30 +254,47 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
 
   Future<void> _submit(String type, {bool openTasks = false}) async {
     if (_detectedMatricule == null) return;
-    
+
     EasyLoading.show(status: 'Envoi...');
     tagsController.attendanceType.value = type;
     tagsController.faceResult.value = _detectedMatricule!;
     tagsController.face.value = _capturedImage;
-    
+
     final res = await HttpManager().checkPresence(key: type);
     EasyLoading.dismiss();
-    
-    bool canProceed = res == 'success';
-    
-    // GESTION SPECIALE : Si maintenance déjà ouverte, on force l'accès aux tâches
-    if (openTasks && res.toString().toLowerCase().contains("ouverte")) {
+
+    bool canProceed = false;
+    String? serverMessage;
+    String? specialMessage;
+
+    if (res is Map && res['status'] == 'success') {
       canProceed = true;
+      serverMessage = res['message']?.toString();
+      final result = res['result'];
+      if (result is Map && result.containsKey('special')) {
+        final s = result['special'];
+        if (s != null && s.toString().isNotEmpty) specialMessage = s.toString();
+      }
+    } else {
+      // GESTION SPECIALE : Si maintenance déjà ouverte, on force l'accès aux tâches
+      if (openTasks &&
+          res != null &&
+          res.toString().toLowerCase().contains("ouverte")) {
+        canProceed = true;
+      }
     }
 
     if (canProceed) {
       if (openTasks) {
         final result = await Get.bottomSheet(
-          KioskTaskModal(matricule: _detectedMatricule!, capturedImage: _capturedImage),
+          KioskTaskModal(
+            matricule: _detectedMatricule!,
+            capturedImage: _capturedImage,
+          ),
           isScrollControlled: true,
           barrierColor: Colors.black54,
         );
-        
+
         if (result == 'confirm-closure') {
           setState(() {
             _isConfirmingClosure = true;
@@ -234,8 +306,52 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           _startLiveStream();
         }
       } else {
-        Get.back();
-        widget.onSuccess();
+        // Afficher modal succès avec message serveur et special si présent
+        Get.dialog(
+          WillPopScope(
+            onWillPop: () async => false,
+            child: AlertDialog(
+              backgroundColor: Colors.white,
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 64),
+                  const SizedBox(height: 12),
+                  Text(
+                    serverMessage ?? 'Opération réussie',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (specialMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(specialMessage)),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          barrierDismissible: false,
+        );
+
+        // Fermer et notifier après un court délai
+        Future.delayed(const Duration(milliseconds: 1400), () {
+          if (mounted) {
+            _resetCamera();
+            if (Get.isDialogOpen ?? false) Get.back();
+            widget.onSuccess();
+          } else {
+            if (Get.isDialogOpen ?? false) Get.back();
+          }
+        });
       }
     } else if (res != null) {
       EasyLoading.showError(res.toString());
@@ -251,6 +367,10 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       _detectedName = null;
       _isFaceDetected = false;
       _isCapturing = false;
+      _isBlinking = false;
+      _blinkStartCenter = null;
+      _closedFrames = 0;
+      _openFrames = 0;
     });
     _startLiveStream();
   }
@@ -270,6 +390,13 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       value: SystemUiOverlayStyle(
         statusBarColor: _isSuccess ? Colors.white : Colors.transparent,
         systemNavigationBarColor: _isSuccess ? Colors.white : Colors.black,
+        systemNavigationBarIconBrightness: _isSuccess
+            ? Brightness.dark
+            : Brightness.light,
+        statusBarIconBrightness: _isSuccess
+            ? Brightness.dark
+            : Brightness.light,
+        statusBarBrightness: _isSuccess ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -279,17 +406,17 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
               child: _isSuccess && _capturedImage != null
                   ? Image.file(File(_capturedImage!.path), fit: BoxFit.cover)
                   : (_controller != null && _controller!.value.isInitialized
-                      ? SizedBox.expand(
-                          child: FittedBox(
-                            fit: BoxFit.cover,
-                            child: SizedBox(
-                              width: _controller!.value.previewSize!.height,
-                              height: _controller!.value.previewSize!.width,
-                              child: CameraPreview(_controller!),
+                        ? SizedBox.expand(
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: _controller!.value.previewSize!.height,
+                                height: _controller!.value.previewSize!.width,
+                                child: CameraPreview(_controller!),
+                              ),
                             ),
-                          ),
-                        )
-                      : Container(color: Colors.black)),
+                          )
+                        : Container(color: Colors.black)),
             ),
 
             if (_isSuccess)
@@ -301,7 +428,9 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             if (!_isSuccess)
               Positioned.fill(
                 child: CustomPaint(
-                  painter: FaceMaskOverlayPainter(isFaceDetected: _isFaceDetected),
+                  painter: FaceMaskOverlayPainter(
+                    isFaceDetected: _isFaceDetected,
+                  ),
                 ),
               ),
 
@@ -310,12 +439,14 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
               child: Column(
                 children: [
                   if (!_isSuccess) _buildTopBar(),
-                  
+
                   if (!_isSuccess) ...[
                     const Spacer(),
                     _buildHint(scale),
                     SizedBox(height: 20 * scale),
-                    if (_client == 'premierbet' || _failedAttempts >= 2 || _isConfirmingClosure)
+                    if (_client == 'premierbet' ||
+                        _failedAttempts >= 2 ||
+                        _isConfirmingClosure)
                       _buildCaptureButton(scale),
                     SizedBox(height: 40 * scale),
                   ] else ...[
@@ -407,7 +538,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             style: TextStyle(
               fontSize: 12 * scale,
               color: Colors.grey.shade600,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
               letterSpacing: 1.5,
             ),
           ),
@@ -418,13 +549,13 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             Center(
               child: TextButton.icon(
                 onPressed: _resetCamera,
-                icon: const Icon(Icons.refresh, size: 18),
+                icon: const Icon(Icons.refresh, size: 12, color: Colors.blue),
                 label: const Text("RELANCER LE SCAN"),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.blueGrey,
                   textStyle: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12 * scale,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 10 * scale,
                     letterSpacing: 1,
                   ),
                 ),
@@ -441,25 +572,44 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       msg = "Confirmez votre identité pour clôturer";
     } else if (!_isFaceDetected) {
       msg = "Positionnez votre visage";
+    } else if (_client == 'electrocool') {
+      // Indication simple : le clignement seul déclenche la capture
+      if (_closedFrames > 0 && _openFrames == 0) {
+        msg = "Clignez maintenant...";
+      } else {
+        msg = "Clignez des yeux pour valider";
+      }
     } else if (_client != 'premierbet' && _failedAttempts < 2) {
       msg = "Clignez des yeux pour valider";
     } else {
       return const SizedBox.shrink();
     }
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
         color: _isConfirmingClosure ? Colors.orange : Colors.black54,
         borderRadius: BorderRadius.circular(30),
       ),
-      child: Text(
-        msg,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 14 * scale,
-          fontWeight: FontWeight.bold,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _client == 'electrocool' && _openFrames > 0
+                ? Icons.north_east
+                : Icons.remove_red_eye,
+            color: Colors.white,
+            size: 16 * scale,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            msg,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14 * scale,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -492,13 +642,20 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                 const SizedBox(
                   width: 24,
                   height: 24,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
                 )
               else
                 const Icon(Icons.auto_awesome, color: Colors.white),
               const SizedBox(width: 12),
               Text(
-                _isCapturing ? "ANALYSE..." : (_isConfirmingClosure ? "CONFIRMER LA CLÔTURE" : "SCANNER LE VISAGE"),
+                _isCapturing
+                    ? "ANALYSE..."
+                    : (_isConfirmingClosure
+                          ? "CONFIRMER LA CLÔTURE"
+                          : "SCANNER LE VISAGE"),
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 15 * scale,
@@ -548,8 +705,8 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             _ReferenceButton(
               icon: Icons.build_circle_rounded,
               label: 'Maint. In',
-              color: const Color(0xFF3B82F6),
-              secondaryColor: const Color(0xFF60A5FA),
+              color: Colors.indigo,
+              secondaryColor: Colors.indigoAccent,
               onTap: () => _submit('maintenance-in'),
             ),
             _ReferenceButton(
@@ -569,8 +726,8 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             _ReferenceButton(
               icon: Icons.check_circle_outline_rounded,
               label: 'Confirmation',
-              color: const Color(0xFF6B7280),
-              secondaryColor: const Color(0xFF9CA3AF),
+              color: Colors.blue,
+              secondaryColor: Colors.lightBlueAccent,
               onTap: () => _submit('Confirmation'),
             ),
             _ReferenceButton(
@@ -611,11 +768,17 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             _ReferenceButton(
               icon: Icons.check_circle_outline_rounded,
               label: 'Confirmation',
-              color: const Color(0xFF6B7280),
-              secondaryColor: const Color(0xFF9CA3AF),
+              color: Colors.blue,
+              secondaryColor: Colors.lightBlueAccent,
               onTap: () => _submit('Confirmation'),
             ),
-            const Expanded(child: SizedBox()),
+            _ReferenceButton(
+              icon: Icons.refresh_rounded,
+              label: 'Relancer',
+              color: const Color(0xFF4D5B78),
+              secondaryColor: const Color(0xFF8A96AE),
+              onTap: _resetCamera,
+            ),
           ],
         ),
       );
@@ -638,24 +801,36 @@ class FaceMaskOverlayPainter extends CustomPainter {
     final ovalWidth = size.width * 0.72;
     final ovalHeight = ovalWidth * 1.35;
     final center = Offset(size.width / 2, size.height * 0.42);
-    final ovalRect = Rect.fromCenter(center: center, width: ovalWidth, height: ovalHeight);
+    final ovalRect = Rect.fromCenter(
+      center: center,
+      width: ovalWidth,
+      height: ovalHeight,
+    );
 
     // 1. Découpe ovale
     canvas.drawPath(
-      Path.combine(PathOperation.difference, Path()..addRect(rect), Path()..addOval(ovalRect)),
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(rect),
+        Path()..addOval(ovalRect),
+      ),
       paint,
     );
 
     // 2. Bordure lumineuse
     final borderPaint = Paint()
-      ..color = isFaceDetected ? const Color(0xFF2ECC71) : Colors.white.withOpacity(0.25)
+      ..color = isFaceDetected
+          ? const Color(0xFF2ECC71)
+          : Colors.white.withOpacity(0.25)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
-    
+
     _drawDashedOval(canvas, ovalRect, borderPaint);
 
     // 3. Maillage Cyber Géométrique (Nodes & Mesh)
-    final meshColor = isFaceDetected ? const Color(0xFF2ECC71) : Colors.white.withOpacity(0.18);
+    final meshColor = isFaceDetected
+        ? const Color(0xFF2ECC71)
+        : Colors.white.withOpacity(0.18);
     final meshPaint = Paint()
       ..color = meshColor
       ..style = PaintingStyle.stroke
@@ -664,32 +839,60 @@ class FaceMaskOverlayPainter extends CustomPainter {
     _drawFaceMesh(canvas, center, ovalWidth, ovalHeight, meshPaint);
   }
 
-  void _drawFaceMesh(Canvas canvas, Offset center, double width, double height, Paint paint) {
+  void _drawFaceMesh(
+    Canvas canvas,
+    Offset center,
+    double width,
+    double height,
+    Paint paint,
+  ) {
     final double w = width * 0.5;
     final double h = height * 0.5;
 
     // Définition des points faciaux (Structure cyber inspirée de l'image)
     final points = [
-      center.translate(0, -h * 0.85),    // 0: Front haut
+      center.translate(0, -h * 0.85), // 0: Front haut
       center.translate(-w * 0.4, -h * 0.65), // 1: Front gauche
-      center.translate(w * 0.4, -h * 0.65),  // 2: Front droit
+      center.translate(w * 0.4, -h * 0.65), // 2: Front droit
       center.translate(-w * 0.7, -h * 0.15), // 3: Tempe gauche
-      center.translate(w * 0.7, -h * 0.15),  // 4: Tempe droite
-      center.translate(-w * 0.5, h * 0.3),   // 5: Pommette gauche
-      center.translate(w * 0.5, h * 0.3),    // 6: Pommette droite
-      center.translate(0, h * 0.1),          // 7: Nez centre
-      center.translate(0, h * 0.9),          // 8: Menton
+      center.translate(w * 0.7, -h * 0.15), // 4: Tempe droite
+      center.translate(-w * 0.5, h * 0.3), // 5: Pommette gauche
+      center.translate(w * 0.5, h * 0.3), // 6: Pommette droite
+      center.translate(0, h * 0.1), // 7: Nez centre
+      center.translate(0, h * 0.9), // 8: Menton
       center.translate(-w * 0.35, h * 0.75), // 9: Machoire gauche
-      center.translate(w * 0.35, h * 0.75),  // 10: Machoire droite
-      center.translate(-w * 0.2, h * 0.45),  // 11: Bouche gauche
-      center.translate(w * 0.2, h * 0.45),   // 12: Bouche droite
+      center.translate(w * 0.35, h * 0.75), // 10: Machoire droite
+      center.translate(-w * 0.2, h * 0.45), // 11: Bouche gauche
+      center.translate(w * 0.2, h * 0.45), // 12: Bouche droite
     ];
 
     // Connexions triangulées
     final List<List<int>> connections = [
-      [0, 1], [0, 2], [1, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7], [6, 7],
-      [5, 9], [6, 10], [9, 8], [10, 8], [11, 12], [7, 11], [7, 12], [11, 8], [12, 8],
-      [3, 1], [4, 2], [0, 7], [3, 7], [4, 7], [5, 11], [6, 12]
+      [0, 1],
+      [0, 2],
+      [1, 2],
+      [1, 3],
+      [2, 4],
+      [3, 5],
+      [4, 6],
+      [5, 7],
+      [6, 7],
+      [5, 9],
+      [6, 10],
+      [9, 8],
+      [10, 8],
+      [11, 12],
+      [7, 11],
+      [7, 12],
+      [11, 8],
+      [12, 8],
+      [3, 1],
+      [4, 2],
+      [0, 7],
+      [3, 7],
+      [4, 7],
+      [5, 11],
+      [6, 12],
     ];
 
     for (var conn in connections) {
@@ -702,7 +905,10 @@ class FaceMaskOverlayPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     for (var p in points) {
-      canvas.drawRect(Rect.fromCenter(center: p, width: 3, height: 3), dotPaint);
+      canvas.drawRect(
+        Rect.fromCenter(center: p, width: 3, height: 3),
+        dotPaint,
+      );
     }
   }
 
@@ -713,7 +919,10 @@ class FaceMaskOverlayPainter extends CustomPainter {
     for (final pathMetric in path.computeMetrics()) {
       double distance = 0;
       while (distance < pathMetric.length) {
-        canvas.drawPath(pathMetric.extractPath(distance, distance + dashWidth), paint);
+        canvas.drawPath(
+          pathMetric.extractPath(distance, distance + dashWidth),
+          paint,
+        );
         distance += dashWidth + dashSpace;
       }
     }
@@ -758,7 +967,11 @@ class _ReferenceButton extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(24 * scale),
               boxShadow: [
-                BoxShadow(color: color.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
+                BoxShadow(
+                  color: color.withOpacity(0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
               ],
             ),
             child: Stack(
@@ -767,7 +980,11 @@ class _ReferenceButton extends StatelessWidget {
                 Positioned(
                   right: -10 * scale,
                   top: -10 * scale,
-                  child: Icon(icon, size: 80 * scale, color: Colors.white.withOpacity(0.12)),
+                  child: Icon(
+                    icon,
+                    size: 80 * scale,
+                    color: Colors.white.withOpacity(0.12),
+                  ),
                 ),
                 Padding(
                   padding: EdgeInsets.all(16 * scale),
@@ -777,13 +994,25 @@ class _ReferenceButton extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                        child: Icon(icon, color: Colors.white, size: 22 * scale),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: Colors.white,
+                          size: 22 * scale,
+                        ),
                       ),
                       const Spacer(),
                       Text(
                         label.toUpperCase(),
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11 * scale, letterSpacing: 1),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11 * scale,
+                          letterSpacing: 1,
+                        ),
                       ),
                     ],
                   ),

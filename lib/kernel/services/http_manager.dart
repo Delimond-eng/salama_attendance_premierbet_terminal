@@ -27,11 +27,14 @@ class HttpManager {
         if (err is List && err.isNotEmpty) return err[0].toString();
         if (err is Map && err.isNotEmpty) {
           var firstVal = err.values.first;
-          return firstVal is List ? firstVal[0].toString() : firstVal.toString();
+          return firstVal is List
+              ? firstVal[0].toString()
+              : firstVal.toString();
         }
         return err.toString();
       }
-      if (response.containsKey("message")) return response["message"].toString();
+      if (response.containsKey("message"))
+        return response["message"].toString();
     }
     return "Une erreur inconnue est survenue.";
   }
@@ -46,12 +49,12 @@ class HttpManager {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) return null;
       }
-      
+
       if (permission == LocationPermission.deniedForever) return null;
 
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 5)
+        timeLimit: const Duration(seconds: 5),
       );
       return "${position.latitude},${position.longitude}";
     } catch (e) {
@@ -59,19 +62,26 @@ class HttpManager {
     }
   }
 
-  Future<dynamic> enrollAgent(String matricule, {List<XFile>? capturedImages}) async {
+  Future<dynamic> enrollAgent(
+    String matricule, {
+    List<XFile>? capturedImages,
+  }) async {
     try {
-      final List<XFile> images = (capturedImages != null && capturedImages.isNotEmpty) 
-          ? capturedImages 
-          : (tagsController.face.value != null ? [tagsController.face.value!] : []);
+      final List<XFile> images =
+          (capturedImages != null && capturedImages.isNotEmpty)
+          ? capturedImages
+          : (tagsController.face.value != null
+                ? [tagsController.face.value!]
+                : []);
 
       if (images.isEmpty) return "Aucune photo capturée.";
-      
+
       EasyLoading.show(status: 'Analyse biométrique...');
-      
+
       List<List<double>> embeddings = [];
       for (var img in images) {
-        final List<double>? e = await FaceRecognitionController.instance.getEmbedding(img);
+        final List<double>? e = await FaceRecognitionController.instance
+            .getEmbedding(img);
         if (e != null) embeddings.add(e);
       }
 
@@ -105,25 +115,29 @@ class HttpManager {
         files: {"photo": File(images.first.path)},
         body: data,
       );
-      
-      if (response != null && response is Map && response["status"] == "success") {
+
+      if (response != null &&
+          response is Map &&
+          response["status"] == "success") {
         final agentData = response["result"] as Map?;
-        final String? agentName = agentData != null ? agentData["fullname"] : null;
-        
+        final String? agentName = agentData != null
+            ? agentData["fullname"]
+            : null;
+
         final face = FacePicture(
           matricule: matricule,
           name: agentName ?? matricule,
           embedding: meanEmbedding,
         );
-        
+
         await DatabaseHelper().deleteFace(matricule);
         await DatabaseHelper().insertFace(face);
         await FaceRecognitionController.instance.reloadTemplates();
-        
+
         EasyLoading.showSuccess("Enrôlement réussi");
         return response;
       }
-      
+
       EasyLoading.dismiss();
       EasyLoading.showError(_extractErrorMessage(response));
       return response;
@@ -140,12 +154,14 @@ class HttpManager {
       if (tagsController.face.value == null) return "Photo manquante";
 
       final latlng = await _getLatlng();
-      String formattedKey = key == 'Confirmation' ? 'Confirmation' : key.toLowerCase().replaceAll(" ", "-");
+      String formattedKey = key == 'Confirmation'
+          ? 'Confirmation'
+          : key.toLowerCase().replaceAll(" ", "-");
 
       Map<String, dynamic> data = {
         "matricule": matricule,
         "station_id": tagsController.activeStation.value?['id'],
-        "coordonnees": latlng ?? "0.0,0.0",
+        "coordonnees": latlng,
         "key": formattedKey,
       };
 
@@ -156,12 +172,14 @@ class HttpManager {
         files: {'photo': File(tagsController.face.value!.path)},
       );
 
-      if (response != null && response is Map && response["status"] == "success") {
-        return "success";
+      if (response != null &&
+          response is Map &&
+          response["status"] == "success") {
+        return response;
       }
       return _extractErrorMessage(response);
     } catch (e) {
-      return "error";
+      return _extractErrorMessage(null);
     }
   }
 
@@ -172,16 +190,22 @@ class HttpManager {
         method: "get",
         body: {"station_id": stationId, "matricule": matricule},
       );
-      
+
       if (response != null) {
         var data;
-        if (response['result'] != null) data = response['result'];
-        else if (response['data'] != null) data = response['data'];
-        else if (response['tasks'] != null) data = response['tasks'];
-        else if (response is List) data = response;
+        if (response['result'] != null)
+          data = response['result'];
+        else if (response['data'] != null)
+          data = response['data'];
+        else if (response['tasks'] != null)
+          data = response['tasks'];
+        else if (response is List)
+          data = response;
 
         if (data is List) {
-          return data.map((t) => model.Task.fromJson(t as Map<String, dynamic>)).toList();
+          return data
+              .map((t) => model.Task.fromJson(t as Map<String, dynamic>))
+              .toList();
         }
       }
     } catch (e) {
@@ -231,8 +255,15 @@ class HttpManager {
       var data = {"station_id": stationId};
       if (latlng != null) data["latlng"] = latlng;
 
-      var response = await Api.request(url: "station.scan", method: "post", body: data);
-      if (response != null && response is Map && response["status"] == "success") return "success";
+      var response = await Api.request(
+        url: "station.scan",
+        method: "post",
+        body: data,
+      );
+      if (response != null &&
+          response is Map &&
+          response["status"] == "success")
+        return "success";
       return _extractErrorMessage(response);
     } catch (e) {
       return "Erreur station";

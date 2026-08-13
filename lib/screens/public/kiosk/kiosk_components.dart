@@ -75,13 +75,15 @@ class KioskScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: overlayStyle ?? const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
+    value:
+        overlayStyle ??
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarColor: Colors.white,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
     child: Scaffold(
       backgroundColor: KioskColors.backgroundBottom,
       body: DecoratedBox(
@@ -172,12 +174,12 @@ class KioskBrandHeader extends StatelessWidget {
         : KioskColors.textLow;
 
     return GestureDetector(
-      onDoubleTap: () async{
+      onDoubleTap: () async {
         final authenticated = await Get.dialog<bool>(
           const KioskAdminPasswordDialog(),
           barrierDismissible: true,
         );
-        if(authenticated!){
+        if (authenticated!) {
           Get.to(() => const KioskAdminFacesPage());
         }
       },
@@ -740,7 +742,7 @@ class _KioskAdminPasswordDialogState extends State<KioskAdminPasswordDialog> {
   String? _error;
 
   void _validate() {
-    if (_controller.text == '20262026') {
+    if (_controller.text == '02335415') {
       Get.back(result: true);
     } else {
       setState(() {
@@ -786,10 +788,7 @@ class _KioskAdminPasswordDialogState extends State<KioskAdminPasswordDialog> {
               ),
             ),
             const SizedBox(height: 18),
-            Text(
-              "Accès Administrateur",
-              style: kioskSubtitle(context),
-            ),
+            Text("Accès Administrateur", style: kioskSubtitle(context)),
             const SizedBox(height: 8),
             Text(
               "Veuillez saisir le mot de passe pour continuer l'enrôlement.",

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class Api {
-  static String baseUrl = 'https://premierbet.salama-drc.com/api';
+  static String baseUrl = 'https://electrocool.salama-drc.com/api';
   //static String baseUrl = 'https://mamba.salama-drc.com/api';
   //static String baseUrl = 'https://chanimetal.salama-drc.com/api';
 
@@ -16,10 +16,14 @@ class Api {
     Map<String, File>? files,
   }) async {
     Uri fullUrl = Uri.parse('$baseUrl/$url');
-    
+
     // Handle GET parameters
     if (method.toLowerCase() == 'get' && body != null) {
-      fullUrl = fullUrl.replace(queryParameters: body.map((key, value) => MapEntry(key, value?.toString() ?? "")));
+      fullUrl = fullUrl.replace(
+        queryParameters: body.map(
+          (key, value) => MapEntry(key, value?.toString() ?? ""),
+        ),
+      );
     }
 
     const apiKey = "16jA/0l6TBmFoPk64MnrmLzVp2MRL2Do0yD5N6K4e54=";
@@ -100,7 +104,6 @@ class Api {
       } catch (_) {
         return null;
       }
-
     } catch (e) {
       if (kDebugMode) {
         print('Exception API ($url): $e');
