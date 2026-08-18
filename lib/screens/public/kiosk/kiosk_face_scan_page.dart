@@ -51,6 +51,12 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   final int _framesRequired = 2; // nombre de frames consécutives requises
   int _closedFrames = 0;
   int _openFrames = 0;
+  // Nouveaux marqueurs temporels pour détection de clignement plus robuste
+  DateTime? _closedStartTime;
+  DateTime? _lastBlinkTime;
+  final Duration _minClosedDuration = const Duration(milliseconds: 60);
+  final Duration _maxClosedDuration = const Duration(milliseconds: 1200);
+  final Duration _minTimeBetweenCaptures = const Duration(milliseconds: 1300);
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
       performanceMode: FaceDetectorMode.accurate,
@@ -125,40 +131,49 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         if (faces.isNotEmpty) {
           final face = faces.first;
           // Pour electrocool : capture automatique dès le clignement des yeux
-          // Pour electrocool : capture automatique dès le clignement des yeux
           // mais exiger un léger mouvement de tête entre la fermeture et la réouverture
           if (_client == 'electrocool' && !_isConfirmingClosure) {
             final leftEye = face.leftEyeOpenProbability ?? 1.0;
             final rightEye = face.rightEyeOpenProbability ?? 1.0;
             final Offset center = face.boundingBox.center;
 
-            // compte les frames où les yeux sont fermés/ouverts pour robustesse
+            // Détection basée sur la durée de fermeture plutôt que sur un nombre
+            // de frames consécutives. Plus robuste face à des taux de frame
+            // variables et aux clignements rapides.
+            final now = DateTime.now();
             if (leftEye <= _closedEyeThreshold &&
                 rightEye <= _closedEyeThreshold) {
-              _closedFrames++;
-              _openFrames = 0;
-              if (_closedFrames == 1) {
-                // début du clignement : mémoriser la position de la tête
-                _blinkStartCenter = center;
-              }
+              // début ou continuation de la fermeture
+              _closedStartTime ??= now;
+              // mémoriser la position de la tête au début du clignement
+              if (_blinkStartCenter == null) _blinkStartCenter = center;
             } else if (leftEye >= _openEyeThreshold &&
                 rightEye >= _openEyeThreshold) {
-              _openFrames++;
-            } else {
-              // état intermédiaire -> reset counters
-              _closedFrames = 0;
-              _openFrames = 0;
-              _blinkStartCenter = null;
-            }
+              // réouverture après fermeture : vérifier durée
+              if (_closedStartTime != null) {
+                final closedDuration = now.difference(_closedStartTime!);
+                final sinceLastBlink = _lastBlinkTime == null
+                    ? const Duration(days: 365)
+                    : now.difference(_lastBlinkTime!);
 
-            // Si on a observé assez de frames fermés puis assez de frames ouverts
-            if (_closedFrames >= _framesRequired &&
-                _openFrames >= _framesRequired) {
-              // déclencher directement la capture uniquement sur le clignement
-              _closedFrames = 0;
-              _openFrames = 0;
+                if (closedDuration >= _minClosedDuration &&
+                    closedDuration <= _maxClosedDuration &&
+                    sinceLastBlink >= _minTimeBetweenCaptures) {
+                  // reconnaissance autorisée : réinitialiser et capturer
+                  _closedStartTime = null;
+                  _blinkStartCenter = null;
+                  _lastBlinkTime = now;
+                  _performCaptureAndVerify();
+                } else {
+                  // échec ou clignement trop long/trop court -> reset
+                  _closedStartTime = null;
+                  _blinkStartCenter = null;
+                }
+              }
+            } else {
+              // état intermédiaire -> réinitialiser si nécessaire
+              _closedStartTime = null;
               _blinkStartCenter = null;
-              _performCaptureAndVerify();
             }
           } else if (_client != 'premierbet' &&
               _failedAttempts < 2 &&
@@ -218,7 +233,9 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       } else {
         _failedAttempts++;
         EasyLoading.showInfo(
-          "Identité non reconnue. Réessayez le clignement des yeux.",
+          (_client == 'premierbet' || _failedAttempts >= 2)
+              ? "Identité non reconnue. Veuillez réessayer."
+              : "Identité non reconnue. Réessayez le clignement des yeux.",
         );
         _startLiveStream();
       }
@@ -371,6 +388,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       _blinkStartCenter = null;
       _closedFrames = 0;
       _openFrames = 0;
+      _closedStartTime = null;
     });
     _startLiveStream();
   }
@@ -573,17 +591,18 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     } else if (!_isFaceDetected) {
       msg = "Positionnez votre visage";
     } else if (_client == 'electrocool') {
-      // Indication simple : le clignement seul déclenche la capture
-      if (_closedFrames > 0 && _openFrames == 0) {
+      // Indication basée sur le nouvel algorithme de clignement
+      if (_closedStartTime != null) {
         msg = "Clignez maintenant...";
       } else {
         msg = "Clignez des yeux pour valider";
       }
-    } else if (_client != 'premierbet' && _failedAttempts < 2) {
-      msg = "Clignez des yeux pour valider";
+    } else if (_client == 'premierbet' || _failedAttempts >= 2) {
+      msg = "Appuyez sur le bouton pour scanner";
     } else {
-      return const SizedBox.shrink();
+      msg = "Clignez des yeux pour valider";
     }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
@@ -594,8 +613,8 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _client == 'electrocool' && _openFrames > 0
-                ? Icons.north_east
+            _client == 'electrocool' && _closedStartTime != null
+                ? Icons.remove_red_eye
                 : Icons.remove_red_eye,
             color: Colors.white,
             size: 16 * scale,

@@ -742,7 +742,8 @@ class _KioskAdminPasswordDialogState extends State<KioskAdminPasswordDialog> {
   String? _error;
 
   void _validate() {
-    if (_controller.text == '02335415') {
+    //02335415
+    if (_controller.text == '20262026') {
       Get.back(result: true);
     } else {
       setState(() {
