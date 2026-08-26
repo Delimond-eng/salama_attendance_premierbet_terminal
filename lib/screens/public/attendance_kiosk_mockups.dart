@@ -72,17 +72,11 @@ class _KioskMockupsGalleryState extends State<KioskMockupsGallery> {
               ));
             },
             onEnrollAction: () async {
-              final authenticated = await Get.dialog<bool>(
-                const KioskAdminPasswordDialog(),
-                barrierDismissible: true,
-              );
-              if (authenticated == true) {
-                tagsController.setAttendanceType("ENROLL");
-                Get.to(() => KioskEnrollPage(
-                  onSuccess: () => _updatePage(3),
-                  onCancel: () => Get.back(),
-                ));
-              }
+              tagsController.setAttendanceType("ENROLL");
+              Get.to(() => KioskEnrollPage(
+                onSuccess: () => _updatePage(3),
+                onCancel: () => Get.back(),
+              ));
             },
             onBack: () {
               tagsController.resetKiosk();

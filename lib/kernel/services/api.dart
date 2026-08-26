@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class Api {
-  static String baseUrl = 'https://premierbet.salama-drc.com/api';
+  static String baseUrl = 'https://md.salama-drc.com/api';
   //static String baseUrl = 'https://mamba.salama-drc.com/api';
   //static String baseUrl = 'https://chanimetal.salama-drc.com/api';
 

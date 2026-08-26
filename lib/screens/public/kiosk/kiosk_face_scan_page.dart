@@ -69,6 +69,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     if (url.contains('electrocool')) return 'electrocool';
     if (url.contains('premierbet')) return 'premierbet';
     if (url.contains('chanimetal')) return 'chanimetal';
+    if (url.contains('md')) return 'md';
     return 'default';
   }
 
@@ -364,7 +365,6 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           if (mounted) {
             _resetCamera();
             if (Get.isDialogOpen ?? false) Get.back();
-            widget.onSuccess();
           } else {
             if (Get.isDialogOpen ?? false) Get.back();
           }
@@ -462,9 +462,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                     const Spacer(),
                     _buildHint(scale),
                     SizedBox(height: 20 * scale),
-                    if (_client == 'premierbet' ||
-                        _failedAttempts >= 2 ||
-                        _isConfirmingClosure)
+                    if (_client == 'premierbet' || _client=='md' || _failedAttempts >= 2 || _isConfirmingClosure)
                       _buildCaptureButton(scale),
                     SizedBox(height: 40 * scale),
                   ] else ...[
@@ -747,7 +745,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
               label: 'Confirmation',
               color: Colors.blue,
               secondaryColor: Colors.lightBlueAccent,
-              onTap: () => _submit('Confirmation'),
+              onTap: () => _submit('confirmation'),
             ),
             _ReferenceButton(
               icon: Icons.refresh_rounded,
@@ -781,6 +779,28 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         ),
       );
     } else if (_client == 'premierbet') {
+      rows.add(
+        Row(
+          children: [
+            _ReferenceButton(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Confirmation',
+              color: Colors.blue,
+              secondaryColor: Colors.lightBlueAccent,
+              onTap: () => _submit('Confirmation'),
+            ),
+            _ReferenceButton(
+              icon: Icons.refresh_rounded,
+              label: 'Relancer',
+              color: const Color(0xFF4D5B78),
+              secondaryColor: const Color(0xFF8A96AE),
+              onTap: _resetCamera,
+            ),
+          ],
+        ),
+      );
+    }
+    else{
       rows.add(
         Row(
           children: [

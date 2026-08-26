@@ -261,33 +261,152 @@ class KioskBrandHeader extends StatelessWidget {
   }
 }
 
-class KioskScanFrame extends StatelessWidget {
+class KioskScanFrame extends StatefulWidget {
   const KioskScanFrame({super.key, required this.size});
   final double size;
 
   @override
+  State<KioskScanFrame> createState() => _KioskScanFrameState();
+}
+
+class _KioskScanFrameState extends State<KioskScanFrame> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Center(
     child: Container(
-      width: size,
-      height: size,
+      width: widget.size,
+      height: widget.size,
       decoration: BoxDecoration(
-        color: KioskColors.surface.withValues(alpha: 0.02),
-        border: Border.all(
-          color: KioskColors.primary.withValues(alpha: 0.28),
-          width: 2,
-        ),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(28),
       ),
-      child: const Stack(
+      child: Stack(
         children: [
-          _Corner(isTop: true, isLeft: true),
-          _Corner(isTop: true, isLeft: false),
-          _Corner(isTop: false, isLeft: true),
-          _Corner(isTop: false, isLeft: false),
+          // Ligne de scan avec effet de "balayage" complexe
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return CustomPaint(
+                size: Size(widget.size, widget.size),
+                painter: _AdvancedScannerPainter(
+                  progress: _controller.value,
+                  color: KioskColors.accent,
+                ),
+              );
+            },
+          ),
+          // Coins statiques par-dessus l'animation
+          const _Corner(isTop: true, isLeft: true),
+          const _Corner(isTop: true, isLeft: false),
+          const _Corner(isTop: false, isLeft: true),
+          const _Corner(isTop: false, isLeft: false),
         ],
       ),
     ),
   );
+}
+
+class _AdvancedScannerPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  _AdvancedScannerPainter({required this.progress, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double scanLineY = size.height * progress;
+    final double horizontalPadding = size.width * 0.05;
+    final double lineWidth = size.width - (2 * horizontalPadding);
+    
+    // 1. Dessiner le "trail" (la traînée lumineuse derrière la ligne)
+    final double trailHeight = size.height * 0.15;
+    final Rect trailRect = Rect.fromLTRB(
+      horizontalPadding,
+      scanLineY - trailHeight,
+      size.width - horizontalPadding,
+      scanLineY,
+    );
+
+    final Paint trailPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          color.withValues(alpha: 0.0),
+          color.withValues(alpha: 0.2),
+        ],
+      ).createShader(trailRect);
+
+    // On ne dessine la traînée que si elle est visible dans le cadre
+    if (scanLineY > 0) {
+      canvas.drawRect(
+        Rect.fromLTRB(
+          horizontalPadding,
+          (scanLineY - trailHeight).clamp(0.0, size.height),
+          size.width - horizontalPadding,
+          scanLineY,
+        ),
+        trailPaint,
+      );
+    }
+
+    // 2. Dessiner la lueur externe (Glow) de la ligne
+    final Paint glowPaint = Paint()
+      ..color = color.withValues(alpha: 0.4)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    
+    canvas.drawLine(
+      Offset(horizontalPadding, scanLineY),
+      Offset(size.width - horizontalPadding, scanLineY),
+      glowPaint,
+    );
+
+    // 3. Dessiner la ligne de laser principale (Beam)
+    final Paint linePaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          color.withValues(alpha: 0.1),
+          color,
+          Colors.white,
+          color,
+          color.withValues(alpha: 0.1),
+        ],
+        stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
+      ).createShader(Rect.fromLTWH(horizontalPadding, scanLineY, lineWidth, 2))
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+      Offset(horizontalPadding, scanLineY),
+      Offset(size.width - horizontalPadding, scanLineY),
+      linePaint,
+    );
+
+    // 4. Petits points d'énergie aux extrémités de la ligne
+    final Paint pointPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(Offset(horizontalPadding, scanLineY), 1.5, pointPaint);
+    canvas.drawCircle(Offset(size.width - horizontalPadding, scanLineY), 1.5, pointPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _AdvancedScannerPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
 class _Corner extends StatelessWidget {
@@ -360,7 +479,15 @@ class _CornerPainter extends CustomPainter {
       path.lineTo(0, size.height);
     }
 
+    // Ajouter une petite bordure blanche interne pour un effet "glass" ou "tech"
     canvas.drawPath(path, paint);
+    
+    final innerPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.5)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(path, innerPaint);
   }
 
   @override

@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -187,78 +189,232 @@ class _KioskStationScanScreenState extends State<KioskStationScanScreen> with Wi
           Get.back();
         }
       },
-      child: KioskScaffold(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Align(alignment: Alignment.center, child: KioskBrandHeader()),
-            SizedBox(height: 28 * scale),
-            Text("Connexion de la station", textAlign: TextAlign.center, style: kioskTitle(context).copyWith(fontSize: 30 * scale)),
-            SizedBox(height: 8 * scale),
-            Text("Cadrez le QR code de votre station.", textAlign: TextAlign.center, style: kioskBody(context)),
-            const Spacer(),
-            Center(
-              child: Obx(() {
-                final isPageActive = tagsController.currentPageIndex.value == 1;
-                final isStandalone = widget.isLatReq;
-      
-                if (!isPageActive && !isStandalone) return const SizedBox.shrink();
-                if (!_isPermissionGranted) return const Center(child: CircularProgressIndicator());
-      
-                return Container(
-                  width: 380 * scale, height: 380 * scale,
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(22 * scale)),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(22 * scale),
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: SizedBox(
-                            width: frameSize, height: frameSize,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(28 * scale),
-                              child: MobileScanner(
-                                controller: controller,
-                                onDetect: _onDetect,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarIconBrightness: Brightness.light,
+          statusBarColor: KioskColors.primaryDark,
+          systemNavigationBarColor: KioskColors.primaryDark,
+          systemNavigationBarIconBrightness: Brightness.light
+        ),
+        child: Scaffold(
+          backgroundColor: Colors.indigo.shade400,
+          body: Stack(
+            children: [
+              Image.asset(
+                'assets/images/attendance.jpg',
+                fit: BoxFit.cover,
+                alignment: Alignment.centerRight,
+              ),
+              // Dégradé directionnel : plus doux en haut, plus sombre en bas
+              // pour une meilleure lisibilité et une ambiance plus sobre
+              // qu'un simple aplat de couleur.
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      KioskColors.primaryDark.withOpacity(0.55),
+                      KioskColors.primary.withOpacity(0.80),
+                      KioskColors.primaryDark.withOpacity(0.92),
+                    ],
+                  ),
+                ),
+              ),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(height: 16 * scale),
+                      const KioskBrandHeader(blueMode: true),
+                      SizedBox(height: 30 * scale),
+                      Text(
+                        "Connexion de la station",
+                        textAlign: TextAlign.center,
+                        style: kioskTitle(context).copyWith(
+                          fontSize: 30 * scale,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Center(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              ),
+                              child: Text(
+                                "Cadrez le QR code de votre station pour l'identifier",
+                                textAlign: TextAlign.center,
+                                style: kioskBody(context).copyWith(
+                                  color: Colors.white70,
+                                  fontSize: 12 * scale,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                        Center(child: KioskScanFrame(size: frameSize)),
-                      ],
-                    ),
+                      ),
+                      const Spacer(),
+                      Center(
+                        child: Obx(() {
+                          final isPageActive = tagsController.currentPageIndex.value == 1;
+                          final isStandalone = widget.isLatReq;
+                
+                          if (!isPageActive && !isStandalone) return const SizedBox.shrink();
+                          if (!_isPermissionGranted) return const Center(child: CircularProgressIndicator(color: Colors.white));
+                
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(30 * scale),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: Container(
+                                width: frameSize + 15 * scale,
+                                height: frameSize + 15 * scale,
+                                padding: EdgeInsets.all(2 * scale),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(30 * scale),
+                                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(22 * scale),
+                                  child: Stack(
+                                    children: [
+                                      Center(
+                                        child: SizedBox(
+                                          width: frameSize, height: frameSize,
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(22 * scale),
+                                            child: MobileScanner(
+                                              controller: controller,
+                                              onDetect: _onDetect,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      if (_hasScanned)
+                                        Container(
+                                          color: Colors.black.withOpacity(0.4),
+                                          child: Center(
+                                            child: IconButton(
+                                              icon: Icon(Icons.refresh_rounded, size: 48 * scale, color: Colors.white),
+                                              onPressed: _restartScan,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                      const Spacer(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ScannerControl(
+                            icon: _isLight ? Icons.flash_off_rounded : Icons.flash_on_rounded,
+                            onTap: () {
+                              controller.toggleTorch();
+                              setState(() => _isLight = !_isLight);
+                            },
+                          ),
+                          if (_hasScanned) ...[
+                            SizedBox(width: 20 * scale),
+                            ScannerControl(
+                              icon: Icons.refresh_rounded,
+                              onTap: _restartScan,
+                              isPrimary: true,
+                            ),
+                          ],
+                          if(_isKioskEnabled)...[
+                            SizedBox(width: 20 * scale),
+                            ScannerControl(
+                              icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
+                              onTap: _handleMdmToggle,
+                            ),
+                          ]
+                
+                        ],
+                      ),
+                      const Spacer(),
+                      Text(
+                        "Astuce: tenez le code à 20-30 cm de la caméra.",
+                        textAlign: TextAlign.center,
+                        style: kioskCaption(context).copyWith(color: Colors.white60),
+                      ),
+                    ],
                   ),
-                );
-              }),
-            ),
-            const Spacer(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ScannerControl(
-                  icon: _isLight ? Icons.flash_off_rounded : Icons.flash_on_rounded,
-                  onTap: () {
-                    controller.toggleTorch();
-                    setState(() => _isLight = !_isLight);
-                  },
                 ),
-                if (_hasScanned) ...[
-                  SizedBox(width: 12 * scale),
-                  ScannerControl(icon: Icons.restart_alt_rounded, onTap: _restartScan),
-                ],
-                if(_isKioskEnabled)...[
-                  SizedBox(width: 12 * scale),
-                  ScannerControl(
-                    icon: _isKioskEnabled ? CupertinoIcons.shield_slash : CupertinoIcons.lock_shield,
-                    onTap: _handleMdmToggle,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ScannerControl extends StatelessWidget {
+  const ScannerControl({super.key, required this.icon, required this.onTap, this.isPrimary = false});
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool isPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = kioskScale(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22 * scale),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              padding: EdgeInsets.all(16 * scale),
+              decoration: BoxDecoration(
+                color: isPrimary ? Colors.amber.withOpacity(0.25) : Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(22 * scale),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
-                ]
-      
-              ],
+                ],
+              ),
+              child: Icon(
+                icon,
+                size: 28 * scale,
+                color: isPrimary ? Colors.amber.shade100 : Colors.white,
+              ),
             ),
-            SizedBox(height: 10 * scale),
-            Text("Astuce: tenez le code à 20-30 cm de la caméra.", textAlign: TextAlign.center, style: kioskCaption(context)),
-          ],
+          ),
         ),
       ),
     );

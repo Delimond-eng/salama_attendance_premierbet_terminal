@@ -154,8 +154,8 @@ class HttpManager {
       if (tagsController.face.value == null) return "Photo manquante";
 
       final latlng = await _getLatlng();
-      String formattedKey = key == 'Confirmation'
-          ? 'Confirmation'
+      String formattedKey = key == 'confirmation'
+          ? 'confirmation'
           : key.toLowerCase().replaceAll(" ", "-");
 
       Map<String, dynamic> data = {
