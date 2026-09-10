@@ -49,6 +49,12 @@ class DatabaseHelper {
     return maps.map(FacePicture.fromMap).toList();
   }
 
+  Future<List<String>> getAllMatricules() async {
+    await init();
+    final List<Map<String, dynamic>> maps = await _db!.query('faces', columns: ['matricule']);
+    return maps.map((e) => e['matricule'] as String).toList();
+  }
+
   Future<void> deleteFace(String matricule) async {
     await init();
     await _db!.delete(

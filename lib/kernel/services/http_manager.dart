@@ -225,23 +225,38 @@ class HttpManager {
       Map<String, File> files = {};
       if (images != null) {
         for (int i = 0; i < images.length; i++) {
-          files['image_$i'] = images[i];
+          files['images[$i]'] = images[i];
+        }
+      }
+
+      // Conversion de la liste en Map pour que Api.request utilise subtask_ids[i]
+      Map<int, int> subtasksMap = {};
+      if (subtaskIds != null) {
+        for (int i = 0; i < subtaskIds.length; i++) {
+          subtasksMap[i] = subtaskIds[i];
         }
       }
 
       final response = await Api.request(
-        url: "terminal/tasks/complete",
+        url: "terminal/tasks/completion",
         method: "post",
         body: {
           "task_id": taskId,
           "matricule": matricule,
-          "subtasks": jsonEncode(subtaskIds ?? []),
+          "subtask_ids": subtasksMap,
           "note": note,
         },
         files: files,
       );
-      return response != null && response['status'] == 'success';
+      
+      if (response != null && response['message'] != null) {
+        EasyLoading.showSuccess(response['message']);
+        return true;
+      }
+      
+      return response != null && (response['status'] == 'success' || response['message'] != null);
     } catch (e) {
+      dev.log("❌ Error completing task: $e");
       return false;
     }
   }

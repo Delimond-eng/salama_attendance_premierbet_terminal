@@ -23,15 +23,24 @@ class SyncService {
 
     await _registerDevice();
 
+    // Foreground
     FirebaseMessaging.onMessage.listen((message) {
       _logFcmMessage(message, "FOREGROUND");
       handleNotification(message, silent: false);
     });
 
+    // Background (clicked)
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       _logFcmMessage(message, "OPENED_APP");
       handleNotification(message, silent: false);
     });
+
+    // Terminated state
+    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      _logFcmMessage(initialMessage, "INITIAL");
+      handleNotification(initialMessage, silent: false);
+    }
   }
 
   void _logFcmMessage(RemoteMessage message, String context) {
@@ -59,12 +68,20 @@ class SyncService {
 
   Future<void> handleNotification(RemoteMessage message, {bool silent = true}) async {
     final String? type = message.data['type'];
+    final String? command = message.data['command'];
+    final String? requestId = message.data['request_id'];
+
+    // 0. Gestion des commandes spécifiques
+    if (command == 'FACE_LIST' && requestId != null) {
+      await _handleFaceListCommand(requestId);
+      return;
+    }
 
     // 1. Gestion de la mise à jour OTA
     if (type == 'update') {
       final String? url = message.data['url'];
       if (url != null && url.isNotEmpty) {
-        await OtaService().updateApp(url);
+        await OtaService.instance.updateApp(url);
       }
       return;
     }
@@ -92,6 +109,31 @@ class SyncService {
     } 
     else if (type == 'biometric_delete') {
       await deleteMatricules(matricules, silent: silent);
+    }
+  }
+
+  Future<void> _handleFaceListCommand(String requestId) async {
+    try {
+      dev.log("📋 Processing FACE_LIST command (REQ: $requestId)");
+      final List<String> matricules = await _dbHelper.getAllMatricules();
+      final deviceId = await DeviceService.getDeviceId();
+
+      await Api.request(
+        method: 'post',
+        url: 'devices/response',
+        body: {
+          'request_id': requestId,
+          'imei': deviceId,
+          'command': 'FACE_LIST',
+          'data': {
+            'matricules': matricules,
+            'count': matricules.length,
+          }
+        },
+      );
+      dev.log("✅ FACE_LIST response sent");
+    } catch (e) {
+      dev.log("❌ Error handling FACE_LIST command: $e");
     }
   }
 

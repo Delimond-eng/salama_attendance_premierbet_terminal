@@ -11,7 +11,6 @@ import '/constants/styles.dart';
 class OtaService {
   static final OtaService instance = OtaService._init();
   OtaService._init();
-  factory OtaService() => instance;
 
   bool _isUpdating = false;
   final RxString _statusMessage = 'Initialisation...'.obs;
@@ -39,39 +38,42 @@ class OtaService {
       _showUpdateModal();
 
       // 3. Exécution de la mise à jour
-      OtaUpdate()
-          .execute(url, destinationFilename: 'salama_mamba_update.apk')
-          .listen((OtaEvent event) {
-            switch (event.status) {
-              case OtaStatus.DOWNLOADING:
-                _statusMessage.value = 'Téléchargement de la mise à jour...';
-                _progressValue.value =
-                    (double.tryParse(event.value ?? '0') ?? 0) / 100;
-                break;
-              case OtaStatus.INSTALLING:
-                _statusMessage.value = 'Installation en cours...';
-                // On ferme le modal après un délai
-                Future.delayed(const Duration(seconds: 3), () {
-                  if (Get.isDialogOpen ?? false) Get.back();
-                  _isUpdating = false;
-                });
-                break;
-              case OtaStatus.ALREADY_RUNNING_ERROR:
-                _handleError('Mise à jour déjà en cours');
-                break;
-              case OtaStatus.PERMISSION_NOT_GRANTED_ERROR:
-                _handleError('Permission de stockage refusée');
-                break;
-              case OtaStatus.DOWNLOAD_ERROR:
-                _handleError('Erreur lors du téléchargement de l\'APK');
-                break;
-              case OtaStatus.INTERNAL_ERROR:
-                _handleError('Erreur interne du système');
-                break;
-              default:
-                break;
-            }
-          }, onError: (e) => _handleError('Erreur fatale : $e'));
+      OtaUpdate().execute(
+        url,
+        destinationFilename: 'salama_mamba_update.apk',
+      ).listen(
+            (OtaEvent event) {
+          switch (event.status) {
+            case OtaStatus.DOWNLOADING:
+              _statusMessage.value = 'Téléchargement de la mise à jour...';
+              _progressValue.value = (double.tryParse(event.value ?? '0') ?? 0) / 100;
+              break;
+            case OtaStatus.INSTALLING:
+              _statusMessage.value = 'Installation en cours...';
+              // On ferme le modal après un délai ou on laisse le système Android prendre le relais
+              Future.delayed(const Duration(seconds: 3), () {
+                if (Get.isDialogOpen!) Get.back();
+                _isUpdating = false;
+              });
+              break;
+            case OtaStatus.ALREADY_RUNNING_ERROR:
+              _handleError('Mise à jour déjà en cours');
+              break;
+            case OtaStatus.PERMISSION_NOT_GRANTED_ERROR:
+              _handleError('Permission de stockage refusée');
+              break;
+            case OtaStatus.DOWNLOAD_ERROR:
+              _handleError('Erreur lors du téléchargement de l\'APK');
+              break;
+            case OtaStatus.INTERNAL_ERROR:
+              _handleError('Erreur interne du système');
+              break;
+            default:
+              break;
+          }
+        },
+        onError: (e) => _handleError('Erreur fatale : $e'),
+      );
     } catch (e) {
       _handleError('Erreur : $e');
     }
@@ -80,7 +82,7 @@ class OtaService {
   void _showUpdateModal() {
     Get.dialog(
       WillPopScope(
-        onWillPop: () async => false,
+        onWillPop: () async => false, // Empêche de fermer avec le bouton retour
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Scaffold(
@@ -91,10 +93,7 @@ class OtaService {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SpinKitFoldingCube(
-                      color: primaryMaterialColor,
-                      size: 50,
-                    ),
+                    const SpinKitFoldingCube(color: primaryMaterialColor, size: 50),
                     const SizedBox(height: 40),
                     const Text(
                       "MISE À JOUR DU SYSTÈME",
@@ -108,54 +107,38 @@ class OtaService {
                       ),
                     ),
                     const SizedBox(height: 15),
-                    Obx(
-                      () => Text(
-                        _statusMessage.value,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                          fontFamily: 'Ubuntu',
-                        ),
-                      ),
-                    ),
+                    Obx(() => Text(
+                      _statusMessage.value,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Ubuntu'),
+                    )),
                     const SizedBox(height: 30),
+
                     // Barre de progression
-                    Obx(
-                      () => Column(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: _progressValue.value,
-                              backgroundColor: Colors.white10,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                primaryMaterialColor,
-                              ),
-                              minHeight: 8,
-                            ),
+                    Obx(() => Column(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: _progressValue.value,
+                            backgroundColor: Colors.white10,
+                            valueColor: const AlwaysStoppedAnimation<Color>(primaryMaterialColor),
+                            minHeight: 8,
                           ),
-                          const SizedBox(height: 10),
-                          Text(
-                            "${(_progressValue.value * 100).toInt()}%",
-                            style: const TextStyle(
-                              color: primaryMaterialColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          "${(_progressValue.value * 100).toInt()}%",
+                          style: const TextStyle(color: primaryMaterialColor, fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                      ],
+                    )),
+
                     const SizedBox(height: 50),
                     const Text(
                       "Veuillez ne pas fermer l'application pendant cette opération.",
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 11,
-                        fontStyle: FontStyle.italic,
-                      ),
+                      style: TextStyle(color: Colors.white38, fontSize: 11, fontStyle: FontStyle.italic),
                     ),
                   ],
                 ),
@@ -170,7 +153,7 @@ class OtaService {
 
   void _handleError(String message) {
     _isUpdating = false;
-    if (Get.isDialogOpen ?? false) Get.back();
+    if (Get.isDialogOpen!) Get.back();
     EasyLoading.showError(message);
   }
 }

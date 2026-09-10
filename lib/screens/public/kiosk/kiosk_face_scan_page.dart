@@ -757,27 +757,6 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
           ],
         ),
       );
-    } else if (_client == 'chanimetal') {
-      rows.add(
-        Row(
-          children: [
-            _ReferenceButton(
-              icon: Icons.assignment_rounded,
-              label: 'Maint. & Tâches',
-              color: const Color(0xFF8B5CF6),
-              secondaryColor: const Color(0xFFA78BFA),
-              onTap: () => _submit('maintenance-in', openTasks: true),
-            ),
-            _ReferenceButton(
-              icon: Icons.check_circle_outline_rounded,
-              label: 'Confirmation',
-              color: const Color(0xFF6B7280),
-              secondaryColor: const Color(0xFF9CA3AF),
-              onTap: () => _submit('Confirmation'),
-            ),
-          ],
-        ),
-      );
     } else if (_client == 'premierbet') {
       rows.add(
         Row(
@@ -817,6 +796,27 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
               color: const Color(0xFF4D5B78),
               secondaryColor: const Color(0xFF8A96AE),
               onTap: _resetCamera,
+            ),
+          ],
+        ),
+      );
+
+      rows.add(
+        Row(
+          children: [
+            _ReferenceButton(
+              icon: Icons.assignment_rounded,
+              label: 'Maint. & Tâches',
+              color: const Color(0xFF8B5CF6),
+              secondaryColor: const Color(0xFFA78BFA),
+              onTap: () => _submit('maintenance-in', openTasks: true),
+            ),
+            _ReferenceButton(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Confirmation',
+              color: const Color(0xFF6B7280),
+              secondaryColor: const Color(0xFF9CA3AF),
+              onTap: () => _submit('Confirmation'),
             ),
           ],
         ),
