@@ -574,7 +574,7 @@ class _FooterBackButton extends StatelessWidget {
           foregroundColor: Colors.white.withOpacity(0.55),
           padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 6 * scale),
         ),
-        icon: Icon(Icons.arrow_back_ios_new_rounded, size: 14 * scale),
+        icon: Icon(Icons.arrow_circle_left, size: 14 * scale),
         label: Text(
           'Retour au scan station',
           style: TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Ubuntu', fontSize: 12.5 * scale),

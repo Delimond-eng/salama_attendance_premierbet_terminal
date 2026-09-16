@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:ota_update/ota_update.dart';
 import '/constants/styles.dart';
+import '/kernel/services/native_face_service.dart';
 
 class OtaService {
   static final OtaService instance = OtaService._init();
@@ -15,6 +16,7 @@ class OtaService {
   bool _isUpdating = false;
   final RxString _statusMessage = 'Initialisation...'.obs;
   final RxDouble _progressValue = 0.0.obs;
+  final NativeFaceService _nativeService = NativeFaceService();
 
   Future<void> updateApp(String url) async {
     if (_isUpdating) return;
@@ -37,10 +39,19 @@ class OtaService {
       // 2. Affichage du modal plein écran
       _showUpdateModal();
 
-      // 3. Exécution de la mise à jour
+      // 3. Désactivation temporaire du mode Kiosque / LockTask
+      // Indispensable pour permettre à Android d'afficher l'interface d'installation de l'APK
+      try {
+        dev_log("🔓 Désactivation du mode kiosque pour la mise à jour...");
+        await _nativeService.disableMdmKiosk();
+      } catch (e) {
+        debugPrint("Erreur lors de la désactivation du mode kiosque: $e");
+      }
+
+      // 4. Exécution de la mise à jour
       OtaUpdate().execute(
         url,
-        destinationFilename: 'salama_mamba_update.apk',
+        destinationFilename: 'terminal.apk',
       ).listen(
             (OtaEvent event) {
           switch (event.status) {
@@ -155,5 +166,10 @@ class OtaService {
     _isUpdating = false;
     if (Get.isDialogOpen!) Get.back();
     EasyLoading.showError(message);
+  }
+
+  void dev_log(String msg) {
+    // Remplacement de dev.log pour éviter l'absence de l'import 'dart:developer'
+    debugPrint(msg);
   }
 }

@@ -115,7 +115,10 @@ class SyncService {
   Future<void> _handleFaceListCommand(String requestId) async {
     try {
       dev.log("📋 Processing FACE_LIST command (REQ: $requestId)");
-      final List<String> matricules = await _dbHelper.getAllMatricules();
+      // Récupération et dédoublonnage des matricules
+      final List<String> allMatricules = await _dbHelper.getAllMatricules();
+      final List<String> uniqueMatricules = allMatricules.toSet().toList();
+      
       final deviceId = await DeviceService.getDeviceId();
 
       await Api.request(
@@ -126,12 +129,12 @@ class SyncService {
           'imei': deviceId,
           'command': 'FACE_LIST',
           'data': {
-            'matricules': matricules,
-            'count': matricules.length,
+            'matricules': uniqueMatricules,
+            'count': uniqueMatricules.length,
           }
         },
       );
-      dev.log("✅ FACE_LIST response sent");
+      dev.log("✅ FACE_LIST response sent (${uniqueMatricules.length} unique matricules)");
     } catch (e) {
       dev.log("❌ Error handling FACE_LIST command: $e");
     }

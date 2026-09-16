@@ -60,6 +60,7 @@ flutter:
     - assets/icons/
     - assets/svgs/
     - assets/models/facenet.tflite
+    - assets/models/mobilefacenet.tflite
 
   fonts:
     - family: Poppins

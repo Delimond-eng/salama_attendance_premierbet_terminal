@@ -17,7 +17,7 @@ public class MdmKioskManager {
     private static final String PREFS_NAME = "mdm_prefs";
     private static final String KEY_KIOSK_ENABLED = "kiosk_enabled";
     private static final String TAG = "MdmKioskManager";
-    
+
     private final Context context;
     private final DevicePolicyManager dpm;
     private final ComponentName adminName;
@@ -47,7 +47,7 @@ public class MdmKioskManager {
 
         try {
             dpm.setLockTaskPackages(adminName, new String[]{context.getPackageName()});
-            
+
             IntentFilter filter = new IntentFilter(Intent.ACTION_MAIN);
             filter.addCategory(Intent.CATEGORY_HOME);
             filter.addCategory(Intent.CATEGORY_DEFAULT);
@@ -70,7 +70,7 @@ public class MdmKioskManager {
             setKioskEnabled(true);
             activity.startLockTask();
             setupImmersiveMode(activity);
-            
+
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Error: " + e.getMessage());
@@ -82,18 +82,18 @@ public class MdmKioskManager {
         try {
             dpm.clearPackagePersistentPreferredActivities(adminName, context.getPackageName());
             activity.stopLockTask();
-            
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 dpm.setKeyguardDisabled(adminName, false);
                 dpm.setStatusBarDisabled(adminName, false);
             }
-            
+
             setKioskEnabled(false);
-            
+
             // Restore System UI
             View decorView = activity.getWindow().getDecorView();
             decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
-            
+
             return true;
         } catch (Exception e) {
             return false;
@@ -113,11 +113,11 @@ public class MdmKioskManager {
             View decorView = activity.getWindow().getDecorView();
             decorView.setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_FULLSCREEN);
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN);
         }
     }
 }

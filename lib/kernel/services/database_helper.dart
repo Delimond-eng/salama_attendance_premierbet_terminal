@@ -51,7 +51,12 @@ class DatabaseHelper {
 
   Future<List<String>> getAllMatricules() async {
     await init();
-    final List<Map<String, dynamic>> maps = await _db!.query('faces', columns: ['matricule']);
+    // Utilisation de distinct: true pour éviter les doublons dès la requête
+    final List<Map<String, dynamic>> maps = await _db!.query(
+      'faces', 
+      columns: ['matricule'],
+      distinct: true,
+    );
     return maps.map((e) => e['matricule'] as String).toList();
   }
 

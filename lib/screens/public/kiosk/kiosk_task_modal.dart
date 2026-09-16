@@ -129,7 +129,7 @@ class _KioskTaskModalState extends State<KioskTaskModal> {
         width: double.infinity,
         height: 55 * scale,
         child: ElevatedButton.icon(
-          onPressed: () => Get.back(result: 'confirm-closure'),
+          onPressed: () =>  Get.back(result: true),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.orange.shade700,
             foregroundColor: Colors.white,
@@ -137,7 +137,7 @@ class _KioskTaskModalState extends State<KioskTaskModal> {
             elevation: 0,
           ),
           icon: const Icon(Icons.lock_reset_rounded),
-          label: const Text("CLÔTURER ET RE-SCANNER", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+          label: const Text("FERMER ET RE-SCANNER", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
         ),
       ),
     );
@@ -411,7 +411,14 @@ class _TaskCompletionSheetState extends State<_TaskCompletionSheet> {
   }
 
   Future<void> _submit() async {
+    if (_selectedSubtasks.isEmpty && _images.isEmpty && _noteController.text.isEmpty) {
+      EasyLoading.showInfo("Veuillez effectuer au moins une action");
+      return;
+    }
+
     setState(() => _isSubmitting = true);
+    EasyLoading.show(status: 'Enregistrement...');
+
     final success = await HttpManager().completeTask(
       taskId: widget.task.id,
       matricule: widget.matricule,
@@ -419,10 +426,17 @@ class _TaskCompletionSheetState extends State<_TaskCompletionSheet> {
       images: _images,
       note: _noteController.text,
     );
+
+    EasyLoading.dismiss();
+
     if (success) {
+      EasyLoading.showSuccess("Mission mise à jour", duration: const Duration(seconds: 1));
       widget.onSuccess();
-      Get.back();
+      Get.back(result: true); // Signaler au parent de fermer
+    } else {
+      EasyLoading.showError("Erreur lors de l'envoi");
     }
+
     setState(() => _isSubmitting = false);
   }
 }

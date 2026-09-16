@@ -193,14 +193,16 @@ class HttpManager {
 
       if (response != null) {
         var data;
-        if (response['result'] != null)
-          data = response['result'];
-        else if (response['data'] != null)
-          data = response['data'];
-        else if (response['tasks'] != null)
-          data = response['tasks'];
-        else if (response is List)
+        if (response is List) {
           data = response;
+        } else if (response is Map) {
+          if (response['result'] != null)
+            data = response['result'];
+          else if (response['data'] != null)
+            data = response['data'];
+          else if (response['tasks'] != null)
+            data = response['tasks'];
+        }
 
         if (data is List) {
           return data
@@ -229,7 +231,6 @@ class HttpManager {
         }
       }
 
-      // Conversion de la liste en Map pour que Api.request utilise subtask_ids[i]
       Map<int, int> subtasksMap = {};
       if (subtaskIds != null) {
         for (int i = 0; i < subtaskIds.length; i++) {
@@ -248,11 +249,6 @@ class HttpManager {
         },
         files: files,
       );
-      
-      if (response != null && response['message'] != null) {
-        EasyLoading.showSuccess(response['message']);
-        return true;
-      }
       
       return response != null && (response['status'] == 'success' || response['message'] != null);
     } catch (e) {

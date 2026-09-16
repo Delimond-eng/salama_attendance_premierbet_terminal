@@ -43,20 +43,14 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   bool _isConfirmingClosure = false;
 
   Offset? _blinkStartCenter;
-  final double _headMoveThreshold =
-      20.0; // pixels minimum de déplacement de la tête
-  // Seuils et comptes pour robustesse avec caméras floues / basse résolution
-  final double _closedEyeThreshold = 0.25; // <= considéré fermé
-  final double _openEyeThreshold = 0.55; // >= considéré ouvert
-  final int _framesRequired = 2; // nombre de frames consécutives requises
-  int _closedFrames = 0;
-  int _openFrames = 0;
-  // Nouveaux marqueurs temporels pour détection de clignement plus robuste
+  final double _closedEyeThreshold = 0.25;
+  final double _openEyeThreshold = 0.55;
   DateTime? _closedStartTime;
   DateTime? _lastBlinkTime;
   final Duration _minClosedDuration = const Duration(milliseconds: 60);
   final Duration _maxClosedDuration = const Duration(milliseconds: 1200);
   final Duration _minTimeBetweenCaptures = const Duration(milliseconds: 1300);
+  
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
       performanceMode: FaceDetectorMode.accurate,
@@ -101,16 +95,23 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
 
   void _startLiveStream() {
     if (_controller != null && _controller!.value.isInitialized) {
-      // reset blink authorization when starting a fresh live stream
-      _isBlinking = false;
-      _blinkStartCenter = null;
-      _closedFrames = 0;
-      _openFrames = 0;
-      _controller!.startImageStream((image) {
-        if (_isProcessingFrame || _isSuccess || _isCapturing) return;
-        _isProcessingFrame = true;
-        _processCameraImage(image);
-      });
+      if (mounted) {
+        setState(() {
+          _isBlinking = false;
+          _closedStartTime = null;
+          _isProcessingFrame = false;
+        });
+      }
+      
+      try {
+        _controller!.startImageStream((image) {
+          if (_isProcessingFrame || _isSuccess || _isCapturing) return;
+          _isProcessingFrame = true;
+          _processCameraImage(image);
+        });
+      } catch (e) {
+        debugPrint("Camera stream error: $e");
+      }
     }
   }
 
@@ -131,26 +132,18 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
 
         if (faces.isNotEmpty) {
           final face = faces.first;
-          // Pour electrocool : capture automatique dès le clignement des yeux
-          // mais exiger un léger mouvement de tête entre la fermeture et la réouverture
           if (_client == 'electrocool' && !_isConfirmingClosure) {
             final leftEye = face.leftEyeOpenProbability ?? 1.0;
             final rightEye = face.rightEyeOpenProbability ?? 1.0;
             final Offset center = face.boundingBox.center;
 
-            // Détection basée sur la durée de fermeture plutôt que sur un nombre
-            // de frames consécutives. Plus robuste face à des taux de frame
-            // variables et aux clignements rapides.
             final now = DateTime.now();
             if (leftEye <= _closedEyeThreshold &&
                 rightEye <= _closedEyeThreshold) {
-              // début ou continuation de la fermeture
               _closedStartTime ??= now;
-              // mémoriser la position de la tête au début du clignement
               if (_blinkStartCenter == null) _blinkStartCenter = center;
             } else if (leftEye >= _openEyeThreshold &&
                 rightEye >= _openEyeThreshold) {
-              // réouverture après fermeture : vérifier durée
               if (_closedStartTime != null) {
                 final closedDuration = now.difference(_closedStartTime!);
                 final sinceLastBlink = _lastBlinkTime == null
@@ -160,19 +153,16 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                 if (closedDuration >= _minClosedDuration &&
                     closedDuration <= _maxClosedDuration &&
                     sinceLastBlink >= _minTimeBetweenCaptures) {
-                  // reconnaissance autorisée : réinitialiser et capturer
                   _closedStartTime = null;
                   _blinkStartCenter = null;
                   _lastBlinkTime = now;
                   _performCaptureAndVerify();
                 } else {
-                  // échec ou clignement trop long/trop court -> reset
                   _closedStartTime = null;
                   _blinkStartCenter = null;
                 }
               }
             } else {
-              // état intermédiaire -> réinitialiser si nécessaire
               _closedStartTime = null;
               _blinkStartCenter = null;
             }
@@ -211,7 +201,10 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     }
 
     try {
-      await _controller!.stopImageStream();
+      if (_controller!.value.isStreamingImages) {
+        await _controller!.stopImageStream();
+      }
+      
       final file = await _controller!.takePicture();
       EasyLoading.show(status: 'Analyse biométrique...');
       final res = await faceRecognitionController.recognizeFaceFromImage(file);
@@ -229,7 +222,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         }
 
         if (_isConfirmingClosure) {
-          _submit('maintenance-out');
+          await _submit('maintenance-out');
         }
       } else {
         _failedAttempts++;
@@ -241,6 +234,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         _startLiveStream();
       }
     } catch (e) {
+      debugPrint("Capture error: $e");
       _startLiveStream();
     } finally {
       if (mounted) setState(() => _isCapturing = false);
@@ -294,7 +288,6 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         if (s != null && s.toString().isNotEmpty) specialMessage = s.toString();
       }
     } else {
-      // GESTION SPECIALE : Si maintenance déjà ouverte, on force l'accès aux tâches
       if (openTasks &&
           res != null &&
           res.toString().toLowerCase().contains("ouverte")) {
@@ -322,75 +315,46 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             _detectedName = null;
           });
           _startLiveStream();
+        } else {
+          _resetCamera();
         }
       } else {
-        // Afficher modal succès avec message serveur et special si présent
-        Get.dialog(
-          WillPopScope(
-            onWillPop: () async => false,
-            child: AlertDialog(
-              backgroundColor: Colors.white,
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green, size: 64),
-                  const SizedBox(height: 12),
-                  Text(
-                    serverMessage ?? 'Opération réussie',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (specialMessage != null) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.info_outline, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(specialMessage)),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          barrierDismissible: false,
-        );
-
-        // Fermer et notifier après un court délai
-        Future.delayed(const Duration(milliseconds: 1400), () {
-          if (mounted) {
-            _resetCamera();
-            if (Get.isDialogOpen ?? false) Get.back();
-          } else {
-            if (Get.isDialogOpen ?? false) Get.back();
-          }
-        });
+        // Succès : Affichage overlay et retour immédiat au scan
+        String msg = serverMessage ?? 'Opération réussie';
+        if (specialMessage != null) msg += "\n$specialMessage";
+        
+        EasyLoading.showSuccess(msg, duration: const Duration(seconds: 2));
+        _resetCamera();
       }
     } else if (res != null) {
       EasyLoading.showError(res.toString());
+      if (_isConfirmingClosure || _isSuccess) {
+        _resetCamera();
+      }
     }
   }
 
   void _resetCamera() {
-    setState(() {
-      _isSuccess = false;
-      _isConfirmingClosure = false;
-      _capturedImage = null;
-      _detectedMatricule = null;
-      _detectedName = null;
-      _isFaceDetected = false;
-      _isCapturing = false;
-      _isBlinking = false;
-      _blinkStartCenter = null;
-      _closedFrames = 0;
-      _openFrames = 0;
-      _closedStartTime = null;
-    });
-    _startLiveStream();
+    if (mounted) {
+      setState(() {
+        _isSuccess = false;
+        _isConfirmingClosure = false;
+        _capturedImage = null;
+        _detectedMatricule = null;
+        _detectedName = null;
+        _isFaceDetected = false;
+        _isCapturing = false;
+        _isBlinking = false;
+        _blinkStartCenter = null;
+        _closedStartTime = null;
+      });
+      
+      if (_controller != null && _controller!.value.isStreamingImages) {
+        _controller!.stopImageStream().then((_) => _startLiveStream());
+      } else {
+        _startLiveStream();
+      }
+    }
   }
 
   @override
@@ -408,12 +372,8 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
       value: SystemUiOverlayStyle(
         statusBarColor: _isSuccess ? Colors.white : Colors.transparent,
         systemNavigationBarColor: _isSuccess ? Colors.white : Colors.black,
-        systemNavigationBarIconBrightness: _isSuccess
-            ? Brightness.dark
-            : Brightness.light,
-        statusBarIconBrightness: _isSuccess
-            ? Brightness.dark
-            : Brightness.light,
+        systemNavigationBarIconBrightness: _isSuccess ? Brightness.dark : Brightness.light,
+        statusBarIconBrightness: _isSuccess ? Brightness.dark : Brightness.light,
         statusBarBrightness: _isSuccess ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
@@ -442,7 +402,6 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                 child: Container(color: Colors.black.withOpacity(0.65)),
               ),
 
-            // Masque Cyber Géométrique
             if (!_isSuccess)
               Positioned.fill(
                 child: CustomPaint(
@@ -469,7 +428,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
                     const Spacer(flex: 1),
                     _buildUserInfoHeader(scale),
                     const Spacer(flex: 1),
-                    _buildGlassActionPanel(scale),
+                    if (!_isConfirmingClosure) _buildGlassActionPanel(scale),
                   ],
                 ],
               ),
@@ -589,7 +548,6 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
     } else if (!_isFaceDetected) {
       msg = "Positionnez votre visage";
     } else if (_client == 'electrocool') {
-      // Indication basée sur le nouvel algorithme de clignement
       if (_closedStartTime != null) {
         msg = "Clignez maintenant...";
       } else {
@@ -611,9 +569,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _client == 'electrocool' && _closedStartTime != null
-                ? Icons.remove_red_eye
-                : Icons.remove_red_eye,
+            Icons.remove_red_eye,
             color: Colors.white,
             size: 16 * scale,
           ),
@@ -690,7 +646,6 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
   Widget _buildActionGrid(BuildContext context, double scale) {
     List<Widget> rows = [];
 
-    // Ligne 1 : Entrée / Sortie
     rows.add(
       Row(
         children: [
@@ -714,21 +669,20 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
 
     rows.add(const SizedBox(height: 12));
 
-    // Ligne 2 : Maintenance / Tâches
     if (_client == 'electrocool') {
       rows.add(
         Row(
           children: [
             _ReferenceButton(
               icon: Icons.build_circle_rounded,
-              label: 'Maint. In',
+              label: 'Maint. & Tâches',
               color: Colors.indigo,
               secondaryColor: Colors.indigoAccent,
-              onTap: () => _submit('maintenance-in'),
+              onTap: () => _submit('maintenance-in', openTasks: true),
             ),
             _ReferenceButton(
               icon: Icons.build_rounded,
-              label: 'Maint. Out',
+              label: 'Clôture Maint.',
               color: const Color(0xFFF59E0B),
               secondaryColor: const Color(0xFFFBBF24),
               onTap: () => _submit('maintenance-out'),
@@ -737,70 +691,7 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
         ),
       );
       rows.add(const SizedBox(height: 12));
-      rows.add(
-        Row(
-          children: [
-            _ReferenceButton(
-              icon: Icons.check_circle_outline_rounded,
-              label: 'Confirmation',
-              color: Colors.blue,
-              secondaryColor: Colors.lightBlueAccent,
-              onTap: () => _submit('confirmation'),
-            ),
-            _ReferenceButton(
-              icon: Icons.refresh_rounded,
-              label: 'Relancer',
-              color: const Color(0xFF4D5B78),
-              secondaryColor: const Color(0xFF8A96AE),
-              onTap: _resetCamera,
-            ),
-          ],
-        ),
-      );
-    } else if (_client == 'premierbet') {
-      rows.add(
-        Row(
-          children: [
-            _ReferenceButton(
-              icon: Icons.check_circle_outline_rounded,
-              label: 'Confirmation',
-              color: Colors.blue,
-              secondaryColor: Colors.lightBlueAccent,
-              onTap: () => _submit('Confirmation'),
-            ),
-            _ReferenceButton(
-              icon: Icons.refresh_rounded,
-              label: 'Relancer',
-              color: const Color(0xFF4D5B78),
-              secondaryColor: const Color(0xFF8A96AE),
-              onTap: _resetCamera,
-            ),
-          ],
-        ),
-      );
-    }
-    else{
-      rows.add(
-        Row(
-          children: [
-            _ReferenceButton(
-              icon: Icons.check_circle_outline_rounded,
-              label: 'Confirmation',
-              color: Colors.blue,
-              secondaryColor: Colors.lightBlueAccent,
-              onTap: () => _submit('Confirmation'),
-            ),
-            _ReferenceButton(
-              icon: Icons.refresh_rounded,
-              label: 'Relancer',
-              color: const Color(0xFF4D5B78),
-              secondaryColor: const Color(0xFF8A96AE),
-              onTap: _resetCamera,
-            ),
-          ],
-        ),
-      );
-
+    } else if (_client != 'premierbet') {
       rows.add(
         Row(
           children: [
@@ -814,13 +705,52 @@ class _KioskFaceScanPageState extends State<KioskFaceScanPage> {
             _ReferenceButton(
               icon: Icons.check_circle_outline_rounded,
               label: 'Confirmation',
-              color: const Color(0xFF6B7280),
-              secondaryColor: const Color(0xFF9CA3AF),
+              color: Colors.blue,
+              secondaryColor: Colors.lightBlueAccent,
               onTap: () => _submit('Confirmation'),
             ),
           ],
         ),
       );
+      rows.add(const SizedBox(height: 12));
+      rows.add(
+        Row(
+          children: [
+
+            _ReferenceButton(
+              icon: Icons.refresh_rounded,
+              label: 'Relancer',
+              color: const Color(0xFF4D5B78),
+              secondaryColor: const Color(0xFF8A96AE),
+              onTap: _resetCamera,
+            ),
+          ],
+        ),
+      );
+      rows.add(const SizedBox(height: 12));
+    }
+    else if (_client == 'premierbet') {
+      rows.add(
+        Row(
+          children: [
+            _ReferenceButton(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Confirmation',
+              color: Colors.blue,
+              secondaryColor: Colors.lightBlueAccent,
+              onTap: () => _submit('Confirmation'),
+            ),
+            _ReferenceButton(
+              icon: Icons.refresh_rounded,
+              label: 'Relancer',
+              color: const Color(0xFF4D5B78),
+              secondaryColor: const Color(0xFF8A96AE),
+              onTap: _resetCamera,
+            ),
+          ],
+        ),
+      );
+      rows.add(const SizedBox(height: 12));
     }
 
     return Column(children: rows);
@@ -846,7 +776,6 @@ class FaceMaskOverlayPainter extends CustomPainter {
       height: ovalHeight,
     );
 
-    // 1. Découpe ovale
     canvas.drawPath(
       Path.combine(
         PathOperation.difference,
@@ -856,7 +785,6 @@ class FaceMaskOverlayPainter extends CustomPainter {
       paint,
     );
 
-    // 2. Bordure lumineuse
     final borderPaint = Paint()
       ..color = isFaceDetected
           ? const Color(0xFF2ECC71)
@@ -866,7 +794,6 @@ class FaceMaskOverlayPainter extends CustomPainter {
 
     _drawDashedOval(canvas, ovalRect, borderPaint);
 
-    // 3. Maillage Cyber Géométrique (Nodes & Mesh)
     final meshColor = isFaceDetected
         ? const Color(0xFF2ECC71)
         : Colors.white.withOpacity(0.18);
@@ -888,57 +815,33 @@ class FaceMaskOverlayPainter extends CustomPainter {
     final double w = width * 0.5;
     final double h = height * 0.5;
 
-    // Définition des points faciaux (Structure cyber inspirée de l'image)
     final points = [
-      center.translate(0, -h * 0.85), // 0: Front haut
-      center.translate(-w * 0.4, -h * 0.65), // 1: Front gauche
-      center.translate(w * 0.4, -h * 0.65), // 2: Front droit
-      center.translate(-w * 0.7, -h * 0.15), // 3: Tempe gauche
-      center.translate(w * 0.7, -h * 0.15), // 4: Tempe droite
-      center.translate(-w * 0.5, h * 0.3), // 5: Pommette gauche
-      center.translate(w * 0.5, h * 0.3), // 6: Pommette droite
-      center.translate(0, h * 0.1), // 7: Nez centre
-      center.translate(0, h * 0.9), // 8: Menton
-      center.translate(-w * 0.35, h * 0.75), // 9: Machoire gauche
-      center.translate(w * 0.35, h * 0.75), // 10: Machoire droite
-      center.translate(-w * 0.2, h * 0.45), // 11: Bouche gauche
-      center.translate(w * 0.2, h * 0.45), // 12: Bouche droite
+      center.translate(0, -h * 0.85),
+      center.translate(-w * 0.4, -h * 0.65),
+      center.translate(w * 0.4, -h * 0.65),
+      center.translate(-w * 0.7, -h * 0.15),
+      center.translate(w * 0.7, -h * 0.15),
+      center.translate(-w * 0.5, h * 0.3),
+      center.translate(w * 0.5, h * 0.3),
+      center.translate(0, h * 0.1),
+      center.translate(0, h * 0.9),
+      center.translate(-w * 0.35, h * 0.75),
+      center.translate(w * 0.35, h * 0.75),
+      center.translate(-w * 0.2, h * 0.45),
+      center.translate(w * 0.2, h * 0.45),
     ];
 
-    // Connexions triangulées
     final List<List<int>> connections = [
-      [0, 1],
-      [0, 2],
-      [1, 2],
-      [1, 3],
-      [2, 4],
-      [3, 5],
-      [4, 6],
-      [5, 7],
-      [6, 7],
-      [5, 9],
-      [6, 10],
-      [9, 8],
-      [10, 8],
-      [11, 12],
-      [7, 11],
-      [7, 12],
-      [11, 8],
-      [12, 8],
-      [3, 1],
-      [4, 2],
-      [0, 7],
-      [3, 7],
-      [4, 7],
-      [5, 11],
-      [6, 12],
+      [0, 1], [0, 2], [1, 2], [1, 3], [2, 4], [3, 5], [4, 6],
+      [5, 7], [6, 7], [5, 9], [6, 10], [9, 8], [10, 8], [11, 12],
+      [7, 11], [7, 12], [11, 8], [12, 8], [3, 1], [4, 2], [0, 7],
+      [3, 7], [4, 7], [5, 11], [6, 12],
     ];
 
     for (var conn in connections) {
       canvas.drawLine(points[conn[0]], points[conn[1]], paint);
     }
 
-    // Nodes (Points d'ancrage)
     final dotPaint = Paint()
       ..color = paint.color.withOpacity(isFaceDetected ? 1.0 : 0.4)
       ..style = PaintingStyle.fill;
